@@ -79,6 +79,9 @@ def update_monarch(balance: float) -> None:
         headers={
             "Authorization": f"Token {token}",
             "Content-Type": "application/json",
+            "Accept": "application/json",
+            "Client-Platform": "web",
+            "User-Agent": "MonarchMoneyAPI (https://github.com/bradleyseanf/monarchmoneycommunity)",
         },
     )
     with urllib.request.urlopen(req) as resp:
