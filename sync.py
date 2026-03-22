@@ -55,7 +55,7 @@ def update_monarch(balance: float) -> None:
             account {
                 id
                 displayName
-                currentBalance
+                displayBalance
             }
             errors {
                 message
@@ -68,7 +68,7 @@ def update_monarch(balance: float) -> None:
         "variables": {
             "input": {
                 "id": MONARCH_ACCOUNT_ID,
-                "currentBalance": balance,
+                "displayBalance": balance,
             }
         },
     }).encode()
@@ -90,7 +90,7 @@ def update_monarch(balance: float) -> None:
         sys.exit(1)
 
     updated = result.get("data", {}).get("updateAccount", {}).get("account", {})
-    print(f"Updated: {updated.get('displayName')} → ${updated.get('currentBalance'):,.2f}")
+    print(f"Updated: {updated.get('displayName')} → ${updated.get('displayBalance'):,.2f}")
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
