@@ -14,7 +14,7 @@ from googleapiclient.discovery import build
 SHEET_ID = "10AjE53pQv-NKO-YoQsVjsOzNRRXjdUPkmleTzDBYoBk"
 SHEET_TAB = "PF Summary"
 LABEL_TO_FIND = "Indian PF"
-MONARCH_ACCOUNT_ID = "210134774683437453"
+MONARCH_ACCOUNT_NAME = "Zerodha"  # Display name of the manual account in Monarch Money
 
 
 # ── Step 1: Read balance from Google Sheets ───────────────────────────────────
@@ -44,10 +44,42 @@ def get_indian_pf_balance() -> float:
 
 
 # ── Step 2: Update Monarch Money ──────────────────────────────────────────────
-def update_monarch(balance: float) -> None:
+def monarch_request(token: str, payload: bytes) -> dict:
     import urllib.request
+    req = urllib.request.Request(
+        "https://api.monarch.com/graphql",
+        data=payload,
+        headers={
+            "Authorization": f"Token {token}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "Client-Platform": "web",
+            "User-Agent": "MonarchMoneyAPI (https://github.com/bradleyseanf/monarchmoneycommunity)",
+        },
+    )
+    with urllib.request.urlopen(req) as resp:
+        return json.loads(resp.read())
 
+
+def get_monarch_account_id(token: str) -> str:
+    payload = json.dumps({
+        "query": "{ accounts { id displayName } }",
+    }).encode()
+    result = monarch_request(token, payload)
+    accounts = result.get("data", {}).get("accounts", [])
+    for account in accounts:
+        if account.get("displayName") == MONARCH_ACCOUNT_NAME:
+            return account["id"]
+    names = [a.get("displayName") for a in accounts]
+    raise ValueError(f"No Monarch account named '{MONARCH_ACCOUNT_NAME}'. Found: {names}")
+
+
+def update_monarch(balance: float) -> None:
     token = os.environ["MONARCH_TOKEN"]
+
+    print(f"  Looking up Monarch account '{MONARCH_ACCOUNT_NAME}'...")
+    account_id = get_monarch_account_id(token)
+    print(f"  Found account ID: {account_id}")
 
     query = """
     mutation Common_UpdateAccount($input: UpdateAccountMutationInput!) {
@@ -67,25 +99,13 @@ def update_monarch(balance: float) -> None:
         "query": query,
         "variables": {
             "input": {
-                "id": MONARCH_ACCOUNT_ID,
+                "id": account_id,
                 "displayBalance": balance,
             }
         },
     }).encode()
 
-    req = urllib.request.Request(
-        "https://api.monarch.com/graphql",
-        data=payload,
-        headers={
-            "Authorization": f"Token {token}",
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-            "Client-Platform": "web",
-            "User-Agent": "MonarchMoneyAPI (https://github.com/bradleyseanf/monarchmoneycommunity)",
-        },
-    )
-    with urllib.request.urlopen(req) as resp:
-        result = json.loads(resp.read())
+    result = monarch_request(token, payload)
 
     errors = result.get("data", {}).get("updateAccount", {}).get("errors", [])
     if errors:
