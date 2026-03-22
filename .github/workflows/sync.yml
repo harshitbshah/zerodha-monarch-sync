@@ -1,0 +1,25 @@
+name: Sync Zerodha to Monarch Money
+
+on:
+  schedule:
+    - cron: "30 3 * * *"  # 9 AM IST (UTC+5:30)
+  workflow_dispatch:       # Allow manual trigger
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install google-auth google-auth-httplib2 google-api-python-client
+
+      - name: Run sync
+        env:
+          GSHEET_SERVICE_ACCOUNT_JSON: ${{ secrets.GSHEET_SERVICE_ACCOUNT_JSON }}
+          MONARCH_TOKEN: ${{ secrets.MONARCH_TOKEN }}
+        run: python sync.py
