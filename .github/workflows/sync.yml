@@ -29,3 +29,20 @@ jobs:
           GSHEET_LABEL: ${{ vars.GSHEET_LABEL }}
           MONARCH_ACCOUNT_NAME: ${{ vars.MONARCH_ACCOUNT_NAME }}
         run: python sync.py
+
+      - name: Send failure email
+        if: failure()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          username: ${{ secrets.NOTIFY_EMAIL }}
+          password: ${{ secrets.NOTIFY_EMAIL_APP_PASSWORD }}
+          to: harshitspeaks@gmail.com
+          from: harshitspeaks@gmail.com
+          subject: "❌ zerodha-monarch-sync failed"
+          body: |
+            The Zerodha → Monarch Money sync failed.
+
+            Check the workflow run for details:
+            https://github.com/harshitbshah/zerodha-monarch-sync/actions
