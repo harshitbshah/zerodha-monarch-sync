@@ -34,7 +34,7 @@ SHEET_ACCOUNTS = json.loads(os.getenv("ACCOUNTS_JSON", json.dumps([
 
 # Label to search for in the sheet to locate the SGOV quantity cell.
 # The value is written to the cell immediately to the right of this label.
-SGOV_LABEL = os.getenv("SGOV_LABEL", "Total")
+SGOV_LABEL = os.getenv("SGOV_LABEL", "Total:")
 
 
 # ── Google Sheets helpers ─────────────────────────────────────────────────────
