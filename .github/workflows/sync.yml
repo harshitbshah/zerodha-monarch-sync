@@ -28,6 +28,8 @@ jobs:
           GSHEET_TAB: ${{ vars.GSHEET_TAB }}
           GSHEET_LABEL: ${{ vars.GSHEET_LABEL }}
           MONARCH_ACCOUNT_NAME: ${{ vars.MONARCH_ACCOUNT_NAME }}
+          EMERGENCY_FUND_ACCOUNTS_JSON: ${{ vars.EMERGENCY_FUND_ACCOUNTS_JSON }}
+          SGOV_TOTAL_CELL: ${{ vars.SGOV_TOTAL_CELL }}
         run: python sync.py
 
       - name: Send failure email
