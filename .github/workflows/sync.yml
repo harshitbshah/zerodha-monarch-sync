@@ -20,6 +20,12 @@ jobs:
       - name: Install dependencies
         run: pip install google-auth google-auth-httplib2 google-api-python-client
 
+      - name: Initialize log with run header
+        run: |
+          echo "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" > sync_output.txt
+          echo "─────────────────────────────────────────" >> sync_output.txt
+          echo "" >> sync_output.txt
+
       - name: Sync Zerodha → Monarch + PF Summary sheet
         env:
           GSHEET_SERVICE_ACCOUNT_JSON: ${{ secrets.GSHEET_SERVICE_ACCOUNT_JSON }}
@@ -30,14 +36,18 @@ jobs:
           MONARCH_ACCOUNT_NAME: ${{ vars.MONARCH_ACCOUNT_NAME }}
           ACCOUNTS_JSON: ${{ vars.ACCOUNTS_JSON }}
           SGOV_LABEL: ${{ vars.SGOV_LABEL }}
-        run: python sync.py | tee -a sync_output.txt
+        run: python sync.py 2>&1 | tee -a sync_output.txt
 
       - name: Sync Monarch holdings → US Portfolio sheet
         env:
           GSHEET_SERVICE_ACCOUNT_JSON: ${{ secrets.GSHEET_SERVICE_ACCOUNT_JSON }}
           MONARCH_TOKEN: ${{ secrets.MONARCH_TOKEN }}
           GSHEET_SHEET_ID: ${{ vars.GSHEET_SHEET_ID }}
-        run: python sync_us_portfolio.py | tee -a sync_output.txt
+        run: python sync_us_portfolio.py 2>&1 | tee -a sync_output.txt
+
+      - name: Format success email
+        if: success()
+        run: python format_email.py
 
       - name: Send success email
         if: success()
@@ -49,8 +59,8 @@ jobs:
           password: ${{ secrets.NOTIFY_EMAIL_APP_PASSWORD }}
           to: harshitspeaks@gmail.com
           from: harshitspeaks@gmail.com
-          subject: "✅ Daily portfolio sync complete"
-          body: "file://sync_output.txt"
+          subject: "✅ Portfolio sync — ${{ github.run_id }}"
+          body: "file://email_body.txt"
 
       - name: Send failure email
         if: failure()
@@ -62,7 +72,5 @@ jobs:
           password: ${{ secrets.NOTIFY_EMAIL_APP_PASSWORD }}
           to: harshitspeaks@gmail.com
           from: harshitspeaks@gmail.com
-          subject: "❌ Daily portfolio sync failed"
-          body: |
-            The portfolio sync failed. Check the workflow run for details:
-            https://github.com/harshitbshah/portfolio-sync/actions
+          subject: "❌ Portfolio sync FAILED — ${{ github.run_id }}"
+          body: "file://sync_output.txt"
