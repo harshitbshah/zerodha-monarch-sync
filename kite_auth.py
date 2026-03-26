@@ -98,17 +98,22 @@ def login() -> str:
                 print(f"  authorize consent page — inspecting page for API endpoint")
                 import re as _re
                 auth_page = s.get(authorize_url, timeout=15)
-                # Look for fetch/XHR endpoints and form actions in the page
-                fetches = _re.findall(r'''(?:fetch|axios\.post)\(['"]([^'"]+)['"]''', auth_page.text)
-                actions = _re.findall(r'action="([^"]+)"', auth_page.text)
-                hrefs = _re.findall(r'href="(/connect/[^"]+)"', auth_page.text)
-                # Also look for JSON chunks that might contain the authorize endpoint
-                api_paths = _re.findall(r'"(/(?:connect|api)/[^"]{5,60})"', auth_page.text)
-                print(f"  page fetch URLs: {fetches[:5]}")
-                print(f"  page form actions: {actions[:5]}")
-                print(f"  page connect hrefs: {hrefs[:5]}")
-                print(f"  page api paths: {list(dict.fromkeys(api_paths))[:10]}")
-                print(f"  authorize page title snippet: {auth_page.text[:200]!r}")
+                # Extract JS bundle URLs from script tags
+                scripts = _re.findall(r'<script[^>]+src="([^"]+)"', auth_page.text)
+                print(f"  authorize page scripts: {scripts}")
+                # Fetch the main JS bundle and search for API paths
+                for script_url in scripts:
+                    if not script_url.startswith("http"):
+                        script_url = "https://kite.zerodha.com" + script_url
+                    try:
+                        js = s.get(script_url, timeout=15)
+                        api_paths = list(dict.fromkeys(
+                            _re.findall(r'"(/(?:connect|api)/[^"]{3,60})"', js.text)
+                        ))
+                        if api_paths:
+                            print(f"  JS {script_url.split('/')[-1]} API paths: {api_paths[:15]}")
+                    except Exception as e:
+                        print(f"  JS fetch error: {e}")
         except requests.exceptions.ConnectionError as e:
             # Redirect chain ended at 127.0.0.1 — extract from the failed request URL
             url = str(e.request.url) if (hasattr(e, "request") and e.request) else ""
