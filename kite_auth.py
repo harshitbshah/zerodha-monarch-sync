@@ -101,17 +101,18 @@ def login() -> str:
                 # Extract JS bundle URLs from script tags
                 scripts = _re.findall(r'<script[^>]+src="([^"]+)"', auth_page.text)
                 print(f"  authorize page scripts: {scripts}")
-                # Fetch the main JS bundle and search for API paths
+                # Fetch all JS bundles and look for authorize/app_session patterns
                 for script_url in scripts:
                     if not script_url.startswith("http"):
                         script_url = "https://kite.zerodha.com" + script_url
                     try:
                         js = s.get(script_url, timeout=15)
-                        api_paths = list(dict.fromkeys(
-                            _re.findall(r'"(/(?:connect|api)/[^"]{3,60})"', js.text)
-                        ))
-                        if api_paths:
-                            print(f"  JS {script_url.split('/')[-1]} API paths: {api_paths[:15]}")
+                        # Search for authorize-related context (50 chars around each match)
+                        for pat in [r'app_session', r'authorize', r'sess_id']:
+                            matches = [js.text[max(0,m.start()-30):m.end()+50]
+                                      for m in _re.finditer(pat, js.text)]
+                            if matches:
+                                print(f"  JS {script_url.split('/')[-1]} '{pat}' contexts: {matches[:3]}")
                     except Exception as e:
                         print(f"  JS fetch error: {e}")
         except requests.exceptions.ConnectionError as e:
