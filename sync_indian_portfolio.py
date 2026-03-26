@@ -8,8 +8,7 @@ What this does each run:
     (Theme is left blank — fill in manually)
 
 Required env vars:
-  KITE_API_KEY                 Kite Connect API key
-  KITE_ACCESS_TOKEN            Kite access token (from kite_auth.py)
+  KITE_ACCESS_TOKEN            Zerodha enctoken (from kite_auth.py)
   GSHEET_SHEET_ID              Google Sheet ID
   GSHEET_SERVICE_ACCOUNT_JSON  Service account JSON (string)
 
@@ -27,8 +26,7 @@ from googleapiclient.discovery import build
 
 SHEET_ID            = os.environ["GSHEET_SHEET_ID"]
 INDIAN_PORTFOLIO_TAB = os.getenv("INDIAN_PORTFOLIO_TAB", "Indian Portfolio")
-KITE_API_KEY        = os.environ["KITE_API_KEY"]
-KITE_ACCESS_TOKEN   = os.environ["KITE_ACCESS_TOKEN"]
+KITE_ACCESS_TOKEN   = os.environ["KITE_ACCESS_TOKEN"]  # enctoken from kite_auth.py
 
 # NSE equity symbols start with a letter; this excludes totals/header rows
 _TICKER_RE = re.compile(r"^[A-Z][A-Z0-9&]{0,19}$")
@@ -39,8 +37,8 @@ _TICKER_RE = re.compile(r"^[A-Z][A-Z0-9&]{0,19}$")
 def get_kite_holdings() -> dict[str, int]:
     """Return {tradingsymbol: quantity} for all settled DEMAT holdings."""
     r = requests.get(
-        "https://api.kite.trade/portfolio/holdings",
-        headers={"Authorization": f"token {KITE_API_KEY}:{KITE_ACCESS_TOKEN}"},
+        "https://kite.zerodha.com/oms/portfolio/holdings",
+        headers={"Authorization": f"enctoken {KITE_ACCESS_TOKEN}"},
         timeout=15,
     )
     r.raise_for_status()
