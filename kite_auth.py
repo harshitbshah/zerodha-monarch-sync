@@ -66,12 +66,15 @@ def login() -> str:
     # the app's redirect_url with request_token.
     skip_url = login_url + ("&" if "?" in login_url else "?") + "skip_session=true"
     request_token = None
+    print(f"  skip_session URL: {skip_url!r}")
     try:
         final_r = s.get(skip_url, allow_redirects=True, timeout=15)
+        print(f"  skip_session final URL: {final_r.url!r} status={final_r.status_code}")
         request_token = parse_qs(urlparse(final_r.url).query).get("request_token", [None])[0]
     except requests.exceptions.ConnectionError as e:
         # Redirect ended at 127.0.0.1 (refused) — extract token from failed URL
         err_url = str(e.request.url) if (hasattr(e, "request") and e.request) else ""
+        print(f"  skip_session ConnectionError URL: {err_url!r}")
         request_token = parse_qs(urlparse(err_url).query).get("request_token", [None])[0]
 
     if not request_token:
