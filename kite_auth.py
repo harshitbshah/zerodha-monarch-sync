@@ -66,13 +66,24 @@ def login() -> str:
     # Step 4: re-hit the connect login URL; with authenticated cookies and
     # skip_session set during twofa, server redirects to redirect_url?request_token=…
     request_token = None
-    try:
-        final_r = s.get(connect_url, allow_redirects=True, timeout=15)
-        request_token = parse_qs(urlparse(final_r.url).query).get("request_token", [None])[0]
-    except requests.exceptions.ConnectionError as e:
-        # Redirect ended at 127.0.0.1 (refused) — extract token from failed URL
-        err_url = str(e.request.url) if (hasattr(e, "request") and e.request) else ""
-        request_token = parse_qs(urlparse(err_url).query).get("request_token", [None])[0]
+    # Try both connect_url and login_url+skip_session variants
+    step4_urls = [
+        connect_url,
+        login_url + "&skip_session=true",
+    ]
+    for step4_url in step4_urls:
+        try:
+            final_r = s.get(step4_url, allow_redirects=True, timeout=15)
+            print(f"  step4 GET → {final_r.status_code} url={final_r.url!r}")
+            request_token = parse_qs(urlparse(final_r.url).query).get("request_token", [None])[0]
+            if request_token:
+                break
+        except requests.exceptions.ConnectionError as e:
+            err_url = str(e.request.url) if (hasattr(e, "request") and e.request) else ""
+            print(f"  step4 ConnErr url={err_url!r}")
+            request_token = parse_qs(urlparse(err_url).query).get("request_token", [None])[0]
+            if request_token:
+                break
 
     if not request_token:
         raise RuntimeError("Could not extract request_token from redirect chain.")
