@@ -50,7 +50,8 @@ def login() -> str:
     s = requests.Session()
 
     # Step 1: initialise Kite Connect OAuth session (sets app-context cookies)
-    s.get(connect_url, timeout=15)
+    init_r = s.get(connect_url, timeout=15)
+    print(f"  step1 final URL: {init_r.url!r}")
 
     # Step 2: submit credentials
     r = s.post(
@@ -96,12 +97,18 @@ def login() -> str:
                 # Landed on the OAuth consent page — POST to /api/connect/app/authorize
                 sess_id = final_params["sess_id"][0]
                 print(f"  authorize consent page — calling /api/connect/app/authorize")
-                # /api/connect/session accepts GET (POST returned 405) — try with sess_id
+                # /api/connect/session accepts GET — get session info to find app_id
                 base = "https://kite.zerodha.com"
+                sess_info_r = s.get(f"{base}/api/connect/session",
+                                    params={"api_key": api_key, "sess_id": sess_id}, timeout=15)
+                sess_data = sess_info_r.json().get("data", {})
+                app_id = sess_data.get("app_id", "")
+                print(f"  connect session: app_id={app_id!r} redirect_params={sess_data.get('redirect_params')!r}")
                 candidates = [
-                    ("GET",  f"{base}/api/connect/session",      None, {"sess_id": sess_id}),
-                    ("GET",  f"{base}/api/connect/session",      None, {"api_key": api_key, "sess_id": sess_id}),
                     ("POST", f"{base}/api/connect/app/authorize", {"sess_id": sess_id, "api_key": api_key}, None),
+                    ("POST", f"{base}/api/apps/{app_id}/authorize",  {"sess_id": sess_id}, None),
+                    ("GET",  f"{base}/api/connect/app/authorize", None, {"api_key": api_key, "sess_id": sess_id}),
+                    ("PUT",  f"{base}/api/connect/session",  {"status": "authorized"}, {"api_key": api_key, "sess_id": sess_id}),
                 ]
                 for method, url, body, params in candidates:
                     try:
