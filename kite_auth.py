@@ -96,21 +96,20 @@ def login() -> str:
                 # Landed on the OAuth consent page — POST to /api/connect/app/authorize
                 sess_id = final_params["sess_id"][0]
                 print(f"  authorize consent page — calling /api/connect/app/authorize")
-                # Try candidate endpoints/methods until one works
+                # /api/connect/session accepts GET (POST returned 405) — try with sess_id
                 base = "https://kite.zerodha.com"
                 candidates = [
-                    ("POST", f"{base}/api/connect/app/authorize", {"sess_id": sess_id}),
-                    ("POST", f"{base}/api/connect/app/authorize/{sess_id}", {}),
-                    ("POST", f"{base}/api/connect/session",           {"sess_id": sess_id}),
-                    ("GET",  f"{base}/api/connect/app/authorize",     {"sess_id": sess_id}),
-                    ("POST", f"https://kite.trade/api/connect/app/authorize", {"sess_id": sess_id}),
+                    ("GET",  f"{base}/api/connect/session",      None, {"sess_id": sess_id}),
+                    ("GET",  f"{base}/api/connect/session",      None, {"api_key": api_key, "sess_id": sess_id}),
+                    ("POST", f"{base}/api/connect/app/authorize", {"sess_id": sess_id, "api_key": api_key}, None),
                 ]
-                for method, url, payload in candidates:
+                for method, url, body, params in candidates:
                     try:
-                        resp = s.request(method, url, data=payload,
+                        resp = s.request(method, url, data=body, params=params,
                                          allow_redirects=True, timeout=15)
                         rt = parse_qs(urlparse(resp.url).query).get("request_token", [None])[0]
-                        print(f"  {method} {url.split('kite')[1]} → {resp.status_code} url={resp.url!r} rt={rt!r} body={resp.text[:120]!r}")
+                        short = url.replace("https://kite.zerodha.com", "")
+                        print(f"  {method} {short} → {resp.status_code} url={resp.url!r} rt={rt!r} body={resp.text[:200]!r}")
                         if rt:
                             r = resp
                             request_token = rt
@@ -118,7 +117,7 @@ def login() -> str:
                     except requests.exceptions.ConnectionError as ce:
                         err_url = str(ce.request.url) if (hasattr(ce, "request") and ce.request) else ""
                         rt = parse_qs(urlparse(err_url).query).get("request_token", [None])[0]
-                        print(f"  {method} {url.split('kite')[1]} → ConnErr url={err_url!r} rt={rt!r}")
+                        print(f"  {method} {url} → ConnErr url={err_url!r} rt={rt!r}")
                         if rt:
                             request_token = rt
                             break
