@@ -13,26 +13,30 @@ _ENV = {
     "ZERODHA_TOTP_KEY": "JBSWY3DPEHPK3PXP",
 }
 
-
-_INIT_URL = "https://kite.zerodha.com/connect/login?api_key=test_api_key&sess_id=init_sess_id"
+# The URL that step 1 lands on (with sess_id)
+_LOGIN_URL = "https://kite.zerodha.com/connect/login?api_key=test_api_key&sess_id=SESS123"
 
 
 def _mock_session(request_token="rt_test", access_token="at_final"):
     """Pre-wired mock session for the happy-path login flow."""
     s = MagicMock()
 
+    # Step 1: init GET lands on the zerodha login URL with sess_id
     init_r = MagicMock()
-    init_r.url = _INIT_URL
-    s.get.return_value = init_r
+    init_r.url = _LOGIN_URL
+
+    # Step 4: skip_session GET redirects directly to redirect_url with request_token
+    skip_r = MagicMock()
+    skip_r.url = f"https://127.0.0.1/?request_token={request_token}&status=success"
+
+    s.get.side_effect = [init_r, skip_r]
 
     login_r = MagicMock()
     login_r.json.return_value = {"status": "success", "data": {"request_id": "req_id"}}
 
     twofa_r = MagicMock()
-    twofa_r.status_code = 302
-    twofa_r.headers = {
-        "Location": f"https://127.0.0.1/?request_token={request_token}&status=success"
-    }
+    twofa_r.status_code = 200
+    twofa_r.headers = {}
 
     token_r = MagicMock()
     token_r.json.return_value = {"status": "success", "data": {"access_token": access_token}}
@@ -50,6 +54,20 @@ class TestLogin:
             mock_totp.return_value.now.return_value = "123456"
             assert kite_auth.login() == "the_token"
 
+    def test_skip_session_url_uses_original_sess_id(self):
+        """skip_session=true must be appended to the captured login URL (with sess_id)."""
+        s = _mock_session()
+        with patch("kite_auth.requests.Session", return_value=s), \
+             patch("kite_auth.pyotp.TOTP") as mock_totp, \
+             patch.dict(os.environ, _ENV):
+            mock_totp.return_value.now.return_value = "123456"
+            kite_auth.login()
+
+        skip_call = s.get.call_args_list[1]
+        called_url = skip_call[0][0]
+        assert "sess_id=SESS123" in called_url
+        assert "skip_session=true" in called_url
+
     def test_totp_value_sent_in_twofa_call(self):
         s = _mock_session()
         with patch("kite_auth.requests.Session", return_value=s), \
@@ -62,37 +80,37 @@ class TestLogin:
         assert twofa_call[1]["data"]["twofa_value"] == "999888"
         assert twofa_call[1]["data"]["twofa_type"] == "totp"
 
-    def test_multi_hop_redirect_eventually_finds_token(self):
-        """Follows an intermediate redirect before the final URL contains request_token."""
+    def test_connection_error_extracts_token_from_url(self):
+        """When redirect chain ends at 127.0.0.1, extract token from ConnectionError URL."""
         s = MagicMock()
+
+        init_r = MagicMock()
+        init_r.url = _LOGIN_URL
+        s.get.side_effect = [
+            init_r,
+            requests_lib.exceptions.ConnectionError(
+                request=MagicMock(url="https://127.0.0.1/?request_token=rt_conn&status=success")
+            ),
+        ]
 
         login_r = MagicMock()
         login_r.json.return_value = {"status": "success", "data": {"request_id": "r"}}
-
         twofa_r = MagicMock()
-        twofa_r.status_code = 302
-        twofa_r.headers = {"Location": "https://kite.zerodha.com/intermediate"}
-
-        hop_r = MagicMock()
-        hop_r.status_code = 302
-        hop_r.headers = {"Location": "https://127.0.0.1/?request_token=rt_hop&status=success"}
-        hop_r.url = _INIT_URL
-
+        twofa_r.status_code = 200
+        twofa_r.headers = {}
         token_r = MagicMock()
-        token_r.json.return_value = {"status": "success", "data": {"access_token": "at_hop"}}
-
+        token_r.json.return_value = {"status": "success", "data": {"access_token": "at_conn"}}
         s.post.side_effect = [login_r, twofa_r, token_r]
-        s.get.return_value = hop_r  # s.get for init + intermediate both return hop_r
 
         with patch("kite_auth.requests.Session", return_value=s), \
              patch("kite_auth.pyotp.TOTP") as mock_totp, \
              patch.dict(os.environ, _ENV):
             mock_totp.return_value.now.return_value = "123456"
-            assert kite_auth.login() == "at_hop"
+            assert kite_auth.login() == "at_conn"
 
     def test_bad_credentials_raises(self):
         s = MagicMock()
-        s.get.return_value.url = _INIT_URL
+        s.get.return_value.url = _LOGIN_URL
         bad_r = MagicMock()
         bad_r.json.return_value = {"status": "error", "message": "Invalid credentials"}
         s.post.return_value = bad_r
@@ -104,58 +122,21 @@ class TestLogin:
             with pytest.raises(RuntimeError, match="Login failed"):
                 kite_auth.login()
 
-    def test_twofa_200_then_retrigger_finds_token(self):
-        """When twofa returns 200 (no redirect), re-hitting connect URL gets the token."""
+    def test_no_request_token_in_redirect_raises(self):
+        """If skip_session redirect doesn't contain request_token, raise."""
         s = MagicMock()
-
-        login_r = MagicMock()
-        login_r.json.return_value = {"status": "success", "data": {"request_id": "r"}}
-
-        twofa_r = MagicMock()
-        twofa_r.status_code = 200
-        twofa_r.headers = {}  # no Location
-
-        # connect re-hit returns 302 → redirect_url with request_token
-        retrigger_r = MagicMock()
-        retrigger_r.status_code = 302
-        retrigger_r.headers = {
-            "Location": "https://127.0.0.1/?request_token=rt_retrig&status=success"
-        }
-
-        token_r = MagicMock()
-        token_r.json.return_value = {"status": "success", "data": {"access_token": "at_retrig"}}
-
-        retrigger_r.url = "https://127.0.0.1/?request_token=rt_retrig&status=success"
-        s.post.side_effect = [login_r, twofa_r, token_r]
-        # Both init GET and re-trigger GET return retrigger_r; init URL must have sess_id
         init_r = MagicMock()
-        init_r.url = _INIT_URL
-        s.get.side_effect = [init_r, retrigger_r]
+        init_r.url = _LOGIN_URL
+        final_r = MagicMock()
+        final_r.url = "https://kite.zerodha.com/connect/login?error=something"
+        s.get.side_effect = [init_r, final_r]
 
-        with patch("kite_auth.requests.Session", return_value=s), \
-             patch("kite_auth.pyotp.TOTP") as mock_totp, \
-             patch.dict(os.environ, _ENV):
-            mock_totp.return_value.now.return_value = "123456"
-            assert kite_auth.login() == "at_retrig"
-
-    def test_no_redirect_at_all_raises(self):
-        s = MagicMock()
         login_r = MagicMock()
         login_r.json.return_value = {"status": "success", "data": {"request_id": "r"}}
         twofa_r = MagicMock()
         twofa_r.status_code = 200
         twofa_r.headers = {}
-
-        # re-trigger also returns 200 with no Location
-        retrigger_r = MagicMock()
-        retrigger_r.status_code = 200
-        retrigger_r.headers = {}
-        retrigger_r.url = "https://kite.zerodha.com/connect/login?v=3&api_key=test_api_key"
-
         s.post.side_effect = [login_r, twofa_r]
-        init_r = MagicMock()
-        init_r.url = _INIT_URL
-        s.get.side_effect = [init_r, retrigger_r]
 
         with patch("kite_auth.requests.Session", return_value=s), \
              patch("kite_auth.pyotp.TOTP") as mock_totp, \
@@ -163,50 +144,6 @@ class TestLogin:
             mock_totp.return_value.now.return_value = "123456"
             with pytest.raises(RuntimeError, match="Could not extract request_token"):
                 kite_auth.login()
-
-    def test_authorize_consent_page_posts_and_finds_token(self):
-        """When re-trigger lands on /connect/authorize?sess_id=…, POST to it to get token."""
-        s = MagicMock()
-
-        login_r = MagicMock()
-        login_r.json.return_value = {"status": "success", "data": {"request_id": "r"}}
-
-        twofa_r = MagicMock()
-        twofa_r.status_code = 200
-        twofa_r.headers = {}
-
-        # connect re-hit lands on the authorize consent page
-        authorize_get_r = MagicMock()
-        authorize_get_r.url = "https://kite.zerodha.com/connect/authorize?api_key=test_api_key&sess_id=SID123"
-
-        # sess_info GET returns app_id
-        sess_info_r = MagicMock()
-        sess_info_r.json.return_value = {"status": "success", "data": {"app_id": 123, "redirect_params": ""}}
-
-        # The candidates loop finds request_token on the first POST attempt
-        authorize_req_r = MagicMock()
-        authorize_req_r.url = "https://127.0.0.1/?request_token=rt_auth&status=success"
-
-        token_r = MagicMock()
-        token_r.json.return_value = {"status": "success", "data": {"access_token": "at_auth"}}
-
-        init_r = MagicMock()
-        init_r.url = _INIT_URL
-        s.get.side_effect = [init_r, authorize_get_r, sess_info_r]
-        s.request.return_value = authorize_req_r
-        s.post.side_effect = [login_r, twofa_r, token_r]
-
-        with patch("kite_auth.requests.Session", return_value=s), \
-             patch("kite_auth.pyotp.TOTP") as mock_totp, \
-             patch.dict(os.environ, _ENV):
-            mock_totp.return_value.now.return_value = "123456"
-            assert kite_auth.login() == "at_auth"
-
-        # Verify the first candidate call hit /api/connect/app/authorize with sess_id
-        first_candidate = s.request.call_args_list[0]
-        assert first_candidate[0][0] == "POST"
-        assert "authorize" in first_candidate[0][1]
-        assert first_candidate[1]["data"]["sess_id"] == "SID123"
 
     def test_session_generation_failure_raises(self):
         s = _mock_session()

@@ -4,14 +4,13 @@
 Writes the access_token to GITHUB_OUTPUT for downstream workflow steps.
 
 Login flow:
-  1. GET kite.trade/connect/login  → initialises Kite Connect OAuth session
-  2. POST /api/login               → Zerodha credentials
-  3. POST /api/twofa               → TOTP (returns 200 + profile, no redirect yet)
-  4. GET kite.trade/connect/login  → re-hit with authenticated cookies;
-                                     Kite redirects to /connect/authorize?sess_id=…
-  5. POST /connect/authorize       → confirm app authorization (sess_id in body);
-                                     Kite redirects to redirect_url?request_token=…
-  6. POST /session/token           → exchange request_token for access_token
+  1. GET kite.trade/connect/login  → follows redirects to zerodha login page;
+                                     captures final URL which contains sess_id
+  2. POST /api/login               → Zerodha credentials → get request_id
+  3. POST /api/twofa               → TOTP; sets enctoken/user_id cookies
+  4. GET <step-1-url>&skip_session=true  → server skips consent page;
+                                     follows redirects to redirect_url?request_token=…
+  5. POST api.kite.trade/session/token  → exchange request_token for access_token
 """
 
 import hashlib
@@ -20,23 +19,6 @@ import os
 import pyotp
 import requests
 from urllib.parse import urlparse, parse_qs
-
-
-def _extract_request_token(r, s, api_key) -> str | None:
-    """Follow redirect chain until request_token is found. Returns token or None."""
-    for _ in range(10):
-        location = r.headers.get("Location", "")
-        params = parse_qs(urlparse(location).query)
-        if "request_token" in params:
-            return params["request_token"][0]
-        if not location or r.status_code not in (301, 302, 303, 307, 308):
-            return None
-        try:
-            r = s.get(location, allow_redirects=False, timeout=10)
-        except requests.exceptions.ConnectionError:
-            params = parse_qs(urlparse(location).query)
-            return params["request_token"][0] if "request_token" in params else None
-    return None
 
 
 def login() -> str:
@@ -49,13 +31,9 @@ def login() -> str:
     connect_url = f"https://kite.trade/connect/login?v=3&api_key={api_key}"
     s = requests.Session()
 
-    # Step 1: initialise Kite Connect OAuth session (sets app-context cookies)
-    # The final URL contains the sess_id we must reuse in step 4
+    # Step 1: init Kite Connect OAuth session; capture the zerodha login URL with sess_id
     init_r = s.get(connect_url, timeout=15)
-    init_params = parse_qs(urlparse(init_r.url).query)
-    original_sess_id = init_params.get("sess_id", [None])[0]
-    print(f"  step1 final URL: {init_r.url!r}")
-    print(f"  step1 cookies: {[(c.name, c.domain) for c in s.cookies]}")
+    login_url = init_r.url  # https://kite.zerodha.com/connect/login?api_key=...&sess_id=...
 
     # Step 2: submit credentials
     r = s.post(
@@ -68,9 +46,8 @@ def login() -> str:
     if payload.get("status") != "success":
         raise RuntimeError(f"Login failed: {payload.get('message')}")
     request_id = payload["data"]["request_id"]
-    print(f"  login cookies after: {[(c.name, c.domain) for c in s.cookies]}")
 
-    # Step 3: submit TOTP — completes web login (returns 200 + profile, no redirect yet)
+    # Step 3: submit TOTP — sets enctoken + user_id cookies on the session
     r = s.post(
         "https://kite.zerodha.com/api/twofa",
         data={
@@ -83,81 +60,22 @@ def login() -> str:
         timeout=15,
     )
     r.raise_for_status()
-    print(f"  twofa status: {r.status_code}")
-    print(f"  twofa cookies: {[(c.name, c.domain) for c in s.cookies]}")
 
-    # Step 4: re-hit the Kite Connect login URL with now-authenticated session.
-    # IMPORTANT: reuse the original sess_id URL from step 1 — hitting connect_url creates a new session.
-    request_token = _extract_request_token(r, s, api_key)
-
-    if not request_token:
-        print("  twofa gave no redirect — re-triggering Kite Connect OAuth...")
-        retrigger_url = init_r.url if original_sess_id else connect_url
-        print(f"  re-trigger URL: {retrigger_url!r}")
-        try:
-            r = s.get(retrigger_url, allow_redirects=True, timeout=15)
-            authorize_url = r.url
-            print(f"  connect re-hit final URL: {authorize_url!r}")
-            final_params = parse_qs(urlparse(authorize_url).query)
-            request_token = final_params.get("request_token", [None])[0]
-
-            if not request_token and "sess_id" in final_params:
-                # Landed on the OAuth consent page — POST to /api/connect/app/authorize
-                sess_id = final_params["sess_id"][0]
-                print(f"  authorize consent page — calling /api/connect/app/authorize")
-                # Find the connect-authorize chunk files in index.js to locate the authorize API call
-                import re as _re
-                idx_js = s.get("https://kite.zerodha.com/static/js/index.c752df4a.js", timeout=15)
-                # Find chunk ID → filename mapping (Webpack: e.g. 526:"abc123" maps chunk 526 to abc123.js)
-                chunk_map = dict(_re.findall(r'(\d+):"([a-f0-9]{8})"', idx_js.text))
-                print(f"  relevant chunks: 526→{chunk_map.get('526')}, 126→{chunk_map.get('126')}")
-                base = "https://kite.zerodha.com"
-                # Try all remaining undiscovered API endpoints
-                candidates = [
-                    # POST /api/user/app_sessions — "create app session" = authorize
-                    ("POST", f"{base}/api/user/app_sessions",
-                     {"sess_id": sess_id, "api_key": api_key}, None),
-                    # POST /api/session with sess_id
-                    ("POST", f"{base}/api/session",
-                     {"sess_id": sess_id, "api_key": api_key}, None),
-                    # GET /api/session to see what it returns
-                    ("GET",  f"{base}/api/session", None, {"sess_id": sess_id}),
-                    # POST to connect/authorize with JSON body (not form data)
-                    ("JSON_POST", f"{base}/api/connect/app/authorize",
-                     {"sess_id": sess_id, "api_key": api_key}, None),
-                ]
-                for method, url, body, params in candidates:
-                    try:
-                        if method == "JSON_POST":
-                            resp = s.post(url, json=body, allow_redirects=True, timeout=15)
-                        else:
-                            resp = s.request(method, url, data=body, params=params,
-                                             allow_redirects=True, timeout=15)
-                        rt = parse_qs(urlparse(resp.url).query).get("request_token", [None])[0]
-                        short = url.replace(base, "")
-                        print(f"  {method} {short} → {resp.status_code} rt={rt!r} body={resp.text[:200]!r}")
-                        if rt:
-                            r = resp
-                            request_token = rt
-                            break
-                    except requests.exceptions.ConnectionError as ce:
-                        err_url = str(ce.request.url) if (hasattr(ce, "request") and ce.request) else ""
-                        rt = parse_qs(urlparse(err_url).query).get("request_token", [None])[0]
-                        print(f"  {method} {url} → ConnErr rt={rt!r}")
-                        if rt:
-                            request_token = rt
-                            break
-        except requests.exceptions.ConnectionError as e:
-            # Redirect chain ended at 127.0.0.1 — extract from the failed request URL
-            url = str(e.request.url) if (hasattr(e, "request") and e.request) else ""
-            print(f"  ConnectionError URL: {url!r}")
-            request_token = parse_qs(urlparse(url).query).get("request_token", [None])[0]
+    # Step 4: re-hit the original login URL with skip_session=true.
+    # This tells Zerodha to bypass the consent UI and immediately redirect to
+    # the app's redirect_url with request_token.
+    skip_url = login_url + ("&" if "?" in login_url else "?") + "skip_session=true"
+    request_token = None
+    try:
+        final_r = s.get(skip_url, allow_redirects=True, timeout=15)
+        request_token = parse_qs(urlparse(final_r.url).query).get("request_token", [None])[0]
+    except requests.exceptions.ConnectionError as e:
+        # Redirect ended at 127.0.0.1 (refused) — extract token from failed URL
+        err_url = str(e.request.url) if (hasattr(e, "request") and e.request) else ""
+        request_token = parse_qs(urlparse(err_url).query).get("request_token", [None])[0]
 
     if not request_token:
-        raise RuntimeError(
-            f"Could not extract request_token. "
-            f"Last status: {r.status_code}, Location: {r.headers.get('Location', '')!r}"
-        )
+        raise RuntimeError("Could not extract request_token from redirect chain.")
 
     # Step 5: exchange request_token for access_token
     checksum = hashlib.sha256(
