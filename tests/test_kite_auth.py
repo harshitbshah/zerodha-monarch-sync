@@ -116,6 +116,7 @@ class TestLogin:
         token_r = MagicMock()
         token_r.json.return_value = {"status": "success", "data": {"access_token": "at_retrig"}}
 
+        retrigger_r.url = "https://127.0.0.1/?request_token=rt_retrig&status=success"
         s.post.side_effect = [login_r, twofa_r, token_r]
         s.get.return_value = retrigger_r  # both init GET and re-trigger GET return this
 
@@ -137,6 +138,7 @@ class TestLogin:
         retrigger_r = MagicMock()
         retrigger_r.status_code = 200
         retrigger_r.headers = {}
+        retrigger_r.url = "https://kite.zerodha.com/connect/login?v=3&api_key=test_api_key"
 
         s.post.side_effect = [login_r, twofa_r]
         s.get.return_value = retrigger_r
