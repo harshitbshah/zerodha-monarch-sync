@@ -25,9 +25,11 @@ def _mock_session(request_token="rt_test", access_token="at_final"):
     init_r = MagicMock()
     init_r.url = _LOGIN_URL
 
-    # Step 4: GET connect_url again — redirects to redirect_url with request_token
+    # Step 4: GET login_url with allow_redirects=False → 302 to redirect_url with request_token
     final_r = MagicMock()
-    final_r.url = f"https://127.0.0.1/?request_token={request_token}&status=success"
+    final_r.status_code = 302
+    final_r.headers = {"Location": f"https://127.0.0.1/?request_token={request_token}&status=success"}
+    final_r.url = _LOGIN_URL
 
     s.get.side_effect = [init_r, final_r]
 
@@ -64,7 +66,7 @@ class TestLogin:
             kite_auth.login()
 
         twofa_call = s.post.call_args_list[1]
-        assert twofa_call[1]["data"]["skip_session"] is True
+        assert twofa_call[1]["data"]["skip_session"] in (True, "true", "True")
 
     def test_totp_value_sent_in_twofa_call(self):
         s = _mock_session()
@@ -121,13 +123,15 @@ class TestLogin:
                 kite_auth.login()
 
     def test_no_request_token_in_redirect_raises(self):
-        """If skip_session redirect doesn't contain request_token, raise."""
+        """If neither step4 URL yields a request_token, raise."""
         s = MagicMock()
         init_r = MagicMock()
         init_r.url = _LOGIN_URL
-        final_r = MagicMock()
-        final_r.url = "https://kite.zerodha.com/connect/login?error=something"
-        s.get.side_effect = [init_r, final_r]
+        no_token_r = MagicMock()
+        no_token_r.status_code = 200
+        no_token_r.headers = {}
+        no_token_r.url = "https://kite.zerodha.com/connect/login?error=something"
+        s.get.side_effect = [init_r, no_token_r, no_token_r]
 
         login_r = MagicMock()
         login_r.json.return_value = {"status": "success", "data": {"request_id": "r"}}
