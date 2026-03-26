@@ -93,22 +93,22 @@ def login() -> str:
             request_token = final_params.get("request_token", [None])[0]
 
             if not request_token and "sess_id" in final_params:
-                # Landed on the OAuth consent page — POST to confirm authorization
+                # Landed on the OAuth consent page — find and call the authorization API
                 sess_id = final_params["sess_id"][0]
-                print(f"  authorize consent page — posting confirmation")
-                try:
-                    r = s.post(
-                        authorize_url,
-                        data={"sess_id": sess_id},
-                        allow_redirects=True,
-                        timeout=15,
-                    )
-                    print(f"  authorize POST final URL: {r.url!r}")
-                    request_token = parse_qs(urlparse(r.url).query).get("request_token", [None])[0]
-                except requests.exceptions.ConnectionError as e:
-                    url = str(e.request.url) if (hasattr(e, "request") and e.request) else ""
-                    print(f"  authorize POST ConnectionError URL: {url!r}")
-                    request_token = parse_qs(urlparse(url).query).get("request_token", [None])[0]
+                print(f"  authorize consent page — inspecting page for API endpoint")
+                import re as _re
+                auth_page = s.get(authorize_url, timeout=15)
+                # Look for fetch/XHR endpoints and form actions in the page
+                fetches = _re.findall(r'''(?:fetch|axios\.post)\(['"]([^'"]+)['"]''', auth_page.text)
+                actions = _re.findall(r'action="([^"]+)"', auth_page.text)
+                hrefs = _re.findall(r'href="(/connect/[^"]+)"', auth_page.text)
+                # Also look for JSON chunks that might contain the authorize endpoint
+                api_paths = _re.findall(r'"(/(?:connect|api)/[^"]{5,60})"', auth_page.text)
+                print(f"  page fetch URLs: {fetches[:5]}")
+                print(f"  page form actions: {actions[:5]}")
+                print(f"  page connect hrefs: {hrefs[:5]}")
+                print(f"  page api paths: {list(dict.fromkeys(api_paths))[:10]}")
+                print(f"  authorize page title snippet: {auth_page.text[:200]!r}")
         except requests.exceptions.ConnectionError as e:
             # Redirect chain ended at 127.0.0.1 — extract from the failed request URL
             url = str(e.request.url) if (hasattr(e, "request") and e.request) else ""
