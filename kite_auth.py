@@ -97,13 +97,22 @@ def login() -> str:
                 sess_id = final_params["sess_id"][0]
                 print(f"  authorize consent page — calling /api/connect/app/authorize")
                 import re as _re
-                # Fetch index.js to get wider context around the authorize endpoint
-                js_r = s.get("https://kite.zerodha.com/static/js/index.c752df4a.js", timeout=15)
-                for pat in ["app/authorize", "sess_id", "connect.app"]:
-                    for m in _re.finditer(pat, js_r.text):
-                        ctx = js_r.text[max(0, m.start()-80):m.end()+120]
-                        print(f"  JS '{pat}' ctx: {ctx!r}")
-                        break  # just first match
+                # The connect-authorize Vue component is lazy-loaded in chunks 526 + 126
+                # Try fetching those chunks to find the actual API call
+                for chunk in ["526", "126"]:
+                    for ext in [".js", ".c752df4a.js"]:
+                        try:
+                            js_r = s.get(f"https://kite.zerodha.com/static/js/{chunk}{ext}", timeout=10)
+                            if js_r.status_code == 200:
+                                print(f"  chunk {chunk}{ext} size={len(js_r.text)}")
+                                for pat in ["authorize", "sess_id", "request_token", "connect"]:
+                                    for m in _re.finditer(pat, js_r.text):
+                                        ctx = js_r.text[max(0, m.start()-60):m.end()+100]
+                                        print(f"  chunk {chunk} '{pat}': {ctx!r}")
+                                        break
+                                break
+                        except Exception:
+                            pass
         except requests.exceptions.ConnectionError as e:
             # Redirect chain ended at 127.0.0.1 — extract from the failed request URL
             url = str(e.request.url) if (hasattr(e, "request") and e.request) else ""
