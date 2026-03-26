@@ -55,8 +55,7 @@ def login() -> str:
     init_params = parse_qs(urlparse(init_r.url).query)
     original_sess_id = init_params.get("sess_id", [None])[0]
     print(f"  step1 final URL: {init_r.url!r}")
-    print(f"  step1 cookies: {dict(s.cookies)}")
-    print(f"  step1 response cookies: {dict(init_r.cookies)}")
+    print(f"  step1 cookies: {[(c.name, c.domain) for c in s.cookies]}")
 
     # Step 2: submit credentials
     r = s.post(
@@ -69,7 +68,7 @@ def login() -> str:
     if payload.get("status") != "success":
         raise RuntimeError(f"Login failed: {payload.get('message')}")
     request_id = payload["data"]["request_id"]
-    print(f"  login cookies after: {dict(s.cookies)}")
+    print(f"  login cookies after: {[(c.name, c.domain) for c in s.cookies]}")
 
     # Step 3: submit TOTP — completes web login (returns 200 + profile, no redirect yet)
     r = s.post(
