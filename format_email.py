@@ -59,13 +59,13 @@ def parse(text: str) -> dict:
         if m:
             data["indian_new"].append((m.group(1), m.group(2)))
 
-        # Removing N closed positions: ['ZS', ...]
-        m = re.match(r"Removing \d+ closed positions: \[(.+)\]", line_s)
+        # [US] Closed: ZS
+        m = re.match(r"\[US\] Closed: (\S+)", line_s)
         if m:
-            data["us_closed"] = [t.strip().strip("'") for t in m.group(1).split(",")]
+            data["us_closed"].append(m.group(1))
 
-        #   NVDA  : 92.3431 shares (Theme/Conviction: fill manually)
-        m = re.match(r"(\w+)\s*:\s*([0-9,]+\.\d+) shares \(Theme", line_s)
+        # [US] Added: RKLB +460.870000
+        m = re.match(r"\[US\] Added: (\S+) \+(\S+)", line_s)
         if m:
             data["us_new"].append((m.group(1), m.group(2)))
 

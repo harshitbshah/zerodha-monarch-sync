@@ -290,6 +290,8 @@ def sync(token: str) -> None:
         print(f"\nRemoving {len(to_remove)} closed positions: {sorted(to_remove)}")
         delete_closed_rows(to_remove, sheet_tickers)
         sheet_tickers = get_sheet_tickers()  # re-read after deletions
+        for ticker in sorted(to_remove):
+            print(f"[US] Closed: {ticker}")
     else:
         print("\nNo closed positions to remove.")
 
@@ -298,7 +300,9 @@ def sync(token: str) -> None:
         print(f"\nAdding {len(to_add)} new positions: {sorted(to_add)}")
         insert_new_rows(to_add, holdings, sheet_tickers)
         for ticker in sorted(to_add):
-            print(f"  {ticker:6s}: {holdings[ticker]:,.4f} shares (Theme/Conviction: fill manually)")
+            qty = holdings[ticker]
+            print(f"  {ticker:6s}: {qty:,.4f} shares (Theme/Conviction: fill manually)")
+            print(f"[US] Added: {ticker} +{qty:,.6f}")
         sheet_tickers = get_sheet_tickers()  # re-read after insertions
     else:
         print("No new positions to add.")

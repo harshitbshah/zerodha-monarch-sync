@@ -19,7 +19,9 @@ PF Summary: Indian PF $234,629.00 29.81% | US PF $552,332.00 70.19% | Total $786
 [Indian] Closed: WINDLAS
 [Indian] Added: GPIL +5804
   NVDA  : 92.3431 shares (Theme/Conviction: fill manually)
+[US] Added: NVDA +92.343100
 Removing 1 closed positions: ['ZS']
+[US] Closed: ZS
 """
 
 WARNING_LOG = """\
@@ -35,6 +37,8 @@ ERROR: Sheet update failed
 
 MULTI_REMOVED_LOG = """\
 Removing 2 closed positions: ['AAA', 'BBB']
+[US] Closed: AAA
+[US] Closed: BBB
 Done. Updated 0, removed 2, added 0.
 """
 
@@ -83,7 +87,7 @@ class TestParse:
     def test_parses_us_new_quantity(self):
         data = fe.parse(CHANGES_LOG)
         qty_map = {t: q for t, q in data["us_new"]}
-        assert qty_map["NVDA"] == "92.3431"
+        assert qty_map["NVDA"] == "92.343100"
 
     def test_parses_single_us_closed(self):
         data = fe.parse(CHANGES_LOG)
@@ -92,6 +96,19 @@ class TestParse:
     def test_parses_multiple_us_closed(self):
         data = fe.parse(MULTI_REMOVED_LOG)
         assert set(data["us_closed"]) == {"AAA", "BBB"}
+
+    def test_indian_removal_line_does_not_pollute_us_closed(self):
+        # sync_indian_portfolio.py prints "Removing N closed positions" before [Indian] Closed:
+        # Make sure that line does NOT end up in us_closed
+        log = "Removing 1 closed positions: ['WINDLAS']\n[Indian] Closed: WINDLAS\n"
+        data = fe.parse(log)
+        assert data["us_closed"] == []
+        assert data["indian_closed"] == ["WINDLAS"]
+
+    def test_us_added_parsed_from_structured_line(self):
+        log = "[US] Added: RKLB +460.870000\n"
+        data = fe.parse(log)
+        assert data["us_new"] == [("RKLB", "460.870000")]
 
     def test_parses_warning_line(self):
         data = fe.parse(WARNING_LOG)

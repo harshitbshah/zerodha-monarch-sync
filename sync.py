@@ -349,7 +349,11 @@ def print_pf_summary() -> None:
             total = amount  # blank label = total row
             break
         if pct_raw is not None:
-            pct = float(pct_raw) * 100
+            pct_str = str(pct_raw).strip()
+            if pct_str.endswith("%"):
+                pct = float(pct_str[:-1])
+            else:
+                pct = float(pct_str) * 100
             components.append(f"{label} ${amount:,.2f} {pct:.2f}%")
 
     parts = components + ([f"Total ${total:,.2f}"] if total else [])
