@@ -84,6 +84,7 @@ def login() -> str:
     )
     r.raise_for_status()
     print(f"  twofa status: {r.status_code}")
+    print(f"  twofa cookies: {[(c.name, c.domain) for c in s.cookies]}")
 
     # Step 4: re-hit the Kite Connect login URL with now-authenticated session.
     # IMPORTANT: reuse the original sess_id URL from step 1 — hitting connect_url creates a new session.
