@@ -150,6 +150,42 @@ class TestLogin:
             with pytest.raises(RuntimeError, match="Could not extract request_token"):
                 kite_auth.login()
 
+    def test_authorize_consent_page_posts_and_finds_token(self):
+        """When re-trigger lands on /connect/authorize?sess_id=…, POST to it to get token."""
+        s = MagicMock()
+
+        login_r = MagicMock()
+        login_r.json.return_value = {"status": "success", "data": {"request_id": "r"}}
+
+        twofa_r = MagicMock()
+        twofa_r.status_code = 200
+        twofa_r.headers = {}
+
+        # connect re-hit lands on the authorize consent page
+        authorize_get_r = MagicMock()
+        authorize_get_r.url = "https://kite.zerodha.com/connect/authorize?api_key=test_api_key&sess_id=SID123"
+
+        # POST to authorize redirects to redirect_url with request_token
+        authorize_post_r = MagicMock()
+        authorize_post_r.url = "https://127.0.0.1/?request_token=rt_auth&status=success"
+
+        token_r = MagicMock()
+        token_r.json.return_value = {"status": "success", "data": {"access_token": "at_auth"}}
+
+        s.get.return_value = authorize_get_r
+        s.post.side_effect = [login_r, twofa_r, authorize_post_r, token_r]
+
+        with patch("kite_auth.requests.Session", return_value=s), \
+             patch("kite_auth.pyotp.TOTP") as mock_totp, \
+             patch.dict(os.environ, _ENV):
+            mock_totp.return_value.now.return_value = "123456"
+            assert kite_auth.login() == "at_auth"
+
+        # Verify the POST was made to the authorize URL with sess_id
+        authorize_call = s.post.call_args_list[2]
+        assert authorize_call[0][0] == "https://kite.zerodha.com/connect/authorize?api_key=test_api_key&sess_id=SID123"
+        assert authorize_call[1]["data"]["sess_id"] == "SID123"
+
     def test_session_generation_failure_raises(self):
         s = _mock_session()
         bad_token_r = MagicMock()

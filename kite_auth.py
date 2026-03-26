@@ -8,8 +8,10 @@ Login flow:
   2. POST /api/login               → Zerodha credentials
   3. POST /api/twofa               → TOTP (returns 200 + profile, no redirect yet)
   4. GET kite.trade/connect/login  → re-hit with authenticated cookies;
-                                     Kite now redirects to redirect_url?request_token=…
-  5. POST /session/token           → exchange request_token for access_token
+                                     Kite redirects to /connect/authorize?sess_id=…
+  5. POST /connect/authorize       → confirm app authorization (sess_id in body);
+                                     Kite redirects to redirect_url?request_token=…
+  6. POST /session/token           → exchange request_token for access_token
 """
 
 import hashlib
@@ -85,8 +87,28 @@ def login() -> str:
         print("  twofa gave no redirect — re-triggering Kite Connect OAuth...")
         try:
             r = s.get(connect_url, allow_redirects=True, timeout=15)
-            print(f"  connect re-hit final URL: {r.url!r}")
-            request_token = parse_qs(urlparse(r.url).query).get("request_token", [None])[0]
+            authorize_url = r.url
+            print(f"  connect re-hit final URL: {authorize_url!r}")
+            final_params = parse_qs(urlparse(authorize_url).query)
+            request_token = final_params.get("request_token", [None])[0]
+
+            if not request_token and "sess_id" in final_params:
+                # Landed on the OAuth consent page — POST to confirm authorization
+                sess_id = final_params["sess_id"][0]
+                print(f"  authorize consent page — posting confirmation")
+                try:
+                    r = s.post(
+                        authorize_url,
+                        data={"sess_id": sess_id},
+                        allow_redirects=True,
+                        timeout=15,
+                    )
+                    print(f"  authorize POST final URL: {r.url!r}")
+                    request_token = parse_qs(urlparse(r.url).query).get("request_token", [None])[0]
+                except requests.exceptions.ConnectionError as e:
+                    url = str(e.request.url) if (hasattr(e, "request") and e.request) else ""
+                    print(f"  authorize POST ConnectionError URL: {url!r}")
+                    request_token = parse_qs(urlparse(url).query).get("request_token", [None])[0]
         except requests.exceptions.ConnectionError as e:
             # Redirect chain ended at 127.0.0.1 — extract from the failed request URL
             url = str(e.request.url) if (hasattr(e, "request") and e.request) else ""
