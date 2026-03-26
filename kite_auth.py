@@ -64,21 +64,17 @@ def login() -> str:
     r.raise_for_status()
     print(f"  twofa status={r.status_code} final_url={r.url!r}")
 
-    # Step 4: re-hit login_url (kite.zerodha.com, where auth cookies live) with
-    # allow_redirects=False so we catch the 302 Location header before it hits
-    # the authorize consent page.  Falls back to connect_url if login_url fails.
+    # Step 4: re-hit login_url (kite.zerodha.com, where auth cookies live).
+    # Server chains: /connect/login → /connect/finish → redirect_url?request_token=…
+    # Using allow_redirects=True lets requests follow the full chain.
+    # Falls back to connect_url if login_url doesn't yield a token.
     request_token = None
     step4_urls = [login_url, connect_url]
     for step4_url in step4_urls:
         try:
-            final_r = s.get(step4_url, allow_redirects=False, timeout=15)
+            final_r = s.get(step4_url, allow_redirects=True, timeout=15)
             print(f"  step4 GET → {final_r.status_code} url={final_r.url!r}")
-            if final_r.status_code == 302:
-                location = final_r.headers.get("Location", "")
-                print(f"  step4 302 Location={location!r}")
-                request_token = parse_qs(urlparse(location).query).get("request_token", [None])[0]
-            else:
-                request_token = parse_qs(urlparse(final_r.url).query).get("request_token", [None])[0]
+            request_token = parse_qs(urlparse(final_r.url).query).get("request_token", [None])[0]
             if request_token:
                 break
         except requests.exceptions.ConnectionError as e:

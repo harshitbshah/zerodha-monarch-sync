@@ -25,11 +25,10 @@ def _mock_session(request_token="rt_test", access_token="at_final"):
     init_r = MagicMock()
     init_r.url = _LOGIN_URL
 
-    # Step 4: GET login_url with allow_redirects=False → 302 to redirect_url with request_token
+    # Step 4: GET login_url with allow_redirects=True — follows connect/finish chain
+    # to redirect_url; mock returns the final URL directly
     final_r = MagicMock()
-    final_r.status_code = 302
-    final_r.headers = {"Location": f"https://127.0.0.1/?request_token={request_token}&status=success"}
-    final_r.url = _LOGIN_URL
+    final_r.url = f"https://127.0.0.1/?request_token={request_token}&status=success"
 
     s.get.side_effect = [init_r, final_r]
 
@@ -128,8 +127,6 @@ class TestLogin:
         init_r = MagicMock()
         init_r.url = _LOGIN_URL
         no_token_r = MagicMock()
-        no_token_r.status_code = 200
-        no_token_r.headers = {}
         no_token_r.url = "https://kite.zerodha.com/connect/login?error=something"
         s.get.side_effect = [init_r, no_token_r, no_token_r]
 
