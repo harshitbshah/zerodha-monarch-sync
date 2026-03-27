@@ -60,9 +60,27 @@ def login() -> str:
     return enctoken
 
 
+def is_valid(token: str) -> bool:
+    """Return True if the token is still accepted by Zerodha."""
+    try:
+        r = requests.get(
+            "https://kite.zerodha.com/oms/user/profile",
+            headers={"Authorization": f"enctoken {token}"},
+            timeout=10,
+        )
+        return r.status_code == 200 and r.json().get("status") == "success"
+    except Exception:
+        return False
+
+
 if __name__ == "__main__":
-    token = login()
-    print("Zerodha enctoken generated successfully.")
+    cached = os.environ.get("KITE_ENCTOKEN_CACHE", "")
+    if cached and is_valid(cached):
+        token = cached
+        print("Reusing cached Zerodha enctoken (no login required).")
+    else:
+        token = login()
+        print("Zerodha enctoken generated via fresh login.")
 
     gh_output = os.environ.get("GITHUB_OUTPUT", "")
     if gh_output:

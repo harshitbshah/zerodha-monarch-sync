@@ -8,6 +8,9 @@ on:
 jobs:
   sync:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      variables: write     # needed to update KITE_ENCTOKEN_CACHE after fresh login
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
@@ -32,7 +35,13 @@ jobs:
           ZERODHA_USER_ID: ${{ secrets.ZERODHA_USER_ID }}
           ZERODHA_PASSWORD: ${{ secrets.ZERODHA_PASSWORD }}
           ZERODHA_TOTP_KEY: ${{ secrets.ZERODHA_TOTP_KEY }}
+          KITE_ENCTOKEN_CACHE: ${{ vars.KITE_ENCTOKEN_CACHE }}
         run: python kite_auth.py
+
+      - name: Cache Kite access token
+        run: gh variable set KITE_ENCTOKEN_CACHE --body "${{ steps.kite_auth.outputs.access_token }}"
+        env:
+          GH_TOKEN: ${{ github.token }}
 
       - name: Sync Indian Portfolio → Google Sheet
         env:
