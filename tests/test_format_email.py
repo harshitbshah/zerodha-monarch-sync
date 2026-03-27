@@ -259,6 +259,7 @@ class TestBuildHtml:
             "us_pct": "55.55%",
             "cash": "$112,907.25",
             "cash_pct": "14.64%",
+            "net_worth": None,
             "zerodha_margin": None,
             "total": "$786,962.00",
             "indian_diffs": [],
