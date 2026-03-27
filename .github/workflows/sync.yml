@@ -83,8 +83,8 @@ jobs:
           server_port: 465
           username: ${{ secrets.NOTIFY_EMAIL }}
           password: ${{ secrets.NOTIFY_EMAIL_APP_PASSWORD }}
-          to: harshitspeaks@gmail.com
-          from: harshitspeaks@gmail.com
+          to: ${{ secrets.NOTIFY_EMAIL }}
+          from: ${{ secrets.NOTIFY_EMAIL }}
           subject: ${{ steps.format.outputs.subject }}
           html_body: "file://email_body.html"
 
@@ -96,7 +96,7 @@ jobs:
           server_port: 465
           username: ${{ secrets.NOTIFY_EMAIL }}
           password: ${{ secrets.NOTIFY_EMAIL_APP_PASSWORD }}
-          to: harshitspeaks@gmail.com
-          from: harshitspeaks@gmail.com
+          to: ${{ secrets.NOTIFY_EMAIL }}
+          from: ${{ secrets.NOTIFY_EMAIL }}
           subject: "❌ Portfolio sync FAILED — ${{ github.run_id }}"
           body: "file://sync_output.txt"
