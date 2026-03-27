@@ -117,21 +117,21 @@ def build_html(data: dict) -> str:
     total      = data["total"]      or "—"
 
     summary_html = f"""
-    <div style="padding:20px 24px;">
+    <div style="padding:16px 24px 12px;">
       <table style="width:100%;border-collapse:collapse;">
         <tr>
-          <td style="padding:6px 0;color:#555;">Indian PF</td>
-          <td style="padding:6px 0;text-align:right;font-weight:500;">{indian_pf}</td>
-          <td style="padding:6px 0;text-align:right;color:#aaa;font-size:13px;padding-left:16px;">{indian_pct}</td>
+          <td style="padding:5px 0;color:#555;">Indian PF</td>
+          <td style="padding:5px 0;text-align:right;font-weight:500;">{indian_pf}</td>
+          <td style="padding:5px 0;text-align:right;color:#aaa;font-size:13px;padding-left:16px;">{indian_pct}</td>
         </tr>
         <tr>
-          <td style="padding:6px 0;color:#555;">US PF</td>
-          <td style="padding:6px 0;text-align:right;font-weight:500;">{us_pf}</td>
-          <td style="padding:6px 0;text-align:right;color:#aaa;font-size:13px;padding-left:16px;">{us_pct}</td>
+          <td style="padding:5px 0;color:#555;">US PF</td>
+          <td style="padding:5px 0;text-align:right;font-weight:500;">{us_pf}</td>
+          <td style="padding:5px 0;text-align:right;color:#aaa;font-size:13px;padding-left:16px;">{us_pct}</td>
         </tr>
         <tr style="border-top:1px solid #eee;">
-          <td style="padding:10px 0 4px;font-weight:600;">Total</td>
-          <td style="padding:10px 0 4px;text-align:right;font-weight:600;font-size:16px;">{total}</td>
+          <td style="padding:8px 0 2px;font-weight:600;">Total</td>
+          <td style="padding:8px 0 2px;text-align:right;font-weight:600;font-size:16px;">{total}</td>
           <td></td>
         </tr>
       </table>
@@ -161,7 +161,7 @@ def build_html(data: dict) -> str:
     # Footer
     footer_html = ""
     if data["run_url"]:
-        footer_html = (f'\n    <div style="padding:12px 24px;border-top:1px solid #f0f0f0;">'
+        footer_html = (f'\n    <div style="padding:8px 24px 10px;border-top:1px solid #f0f0f0;">'
                        f'\n      <a href="{data["run_url"]}" style="color:#aaa;font-size:12px;text-decoration:none;">view run →</a>'
                        f'\n    </div>')
 
@@ -169,7 +169,7 @@ def build_html(data: dict) -> str:
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;padding:0;background:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;color:#1a1a1a;">
-<div style="max-width:520px;margin:32px auto;padding:0 16px;">
+<div style="max-width:520px;margin:20px auto;padding:0 16px;">
   <div style="background:#fff;border-radius:8px;overflow:hidden;">
     <div style="padding:20px 24px 16px;border-bottom:1px solid #f0f0f0;">
       <span style="font-size:18px;font-weight:600;">{emoji} Portfolio sync</span>
