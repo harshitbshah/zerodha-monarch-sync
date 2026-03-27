@@ -50,6 +50,7 @@ jobs:
           GSHEET_LABEL: ${{ vars.GSHEET_LABEL }}
           MONARCH_ACCOUNT_NAME: ${{ vars.MONARCH_ACCOUNT_NAME }}
           ACCOUNTS_JSON: ${{ vars.ACCOUNTS_JSON }}
+          SGOV_LABEL: ${{ vars.SGOV_LABEL }}
           PF_BREAKDOWN_LABEL: ${{ vars.PF_BREAKDOWN_LABEL }}
         run: python sync.py 2>&1 | tee -a sync_output.txt
 
