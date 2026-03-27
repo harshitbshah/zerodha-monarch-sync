@@ -1,3 +1,4 @@
+import pytest
 import format_email as fe
 
 # ── Sample log fixtures ───────────────────────────────────────────────────────
@@ -40,6 +41,12 @@ Removing 2 closed positions: ['AAA', 'BBB']
 [US] Closed: AAA
 [US] Closed: BBB
 Done. Updated 0, removed 2, added 0.
+"""
+
+SGOV_LOG = """\
+[SGOV] Robinhood individual (...8902): $5710.85
+[SGOV] Robinhood individual (...8195): $34709.35
+[SGOV] ROTH IRA (...*****4882): $37860.19
 """
 
 
@@ -119,6 +126,18 @@ class TestParse:
         data = fe.parse(ERROR_LOG)
         assert any("Sheet update failed" in w for w in data["warnings"])
 
+    def test_parses_sgov_entries(self):
+        data = fe.parse(SGOV_LOG)
+        names = [n for n, _ in data["sgov"]]
+        assert "Robinhood individual (...8902)" in names
+        assert "Robinhood individual (...8195)" in names
+
+    def test_parses_sgov_values(self):
+        data = fe.parse(SGOV_LOG)
+        val_map = {n: v for n, v in data["sgov"]}
+        assert val_map["Robinhood individual (...8902)"] == pytest.approx(5710.85)
+        assert val_map["ROTH IRA (...*****4882)"] == pytest.approx(37860.19)
+
     def test_empty_log_gives_safe_defaults(self):
         data = fe.parse("")
         assert data["run_url"] is None
@@ -130,6 +149,7 @@ class TestParse:
         assert data["indian_new"] == []
         assert data["us_closed"] == []
         assert data["us_new"] == []
+        assert data["sgov"] == []
         assert data["warnings"] == []
 
 
@@ -144,6 +164,7 @@ class TestBuildSubject:
             "indian_new": [],
             "us_closed": [],
             "us_new": [],
+            "sgov": [],
             "warnings": [],
         }
         base.update(kw)
@@ -185,6 +206,7 @@ class TestBuildHtml:
             "indian_new": [],
             "us_closed": [],
             "us_new": [],
+            "sgov": [],
             "warnings": [],
         }
         base.update(kw)
@@ -242,3 +264,24 @@ class TestBuildHtml:
     def test_html_starts_with_doctype(self):
         html = fe.build_html(self._quiet())
         assert html.startswith("<!DOCTYPE html>")
+
+    def test_sgov_section_shown(self):
+        html = fe.build_html(self._quiet(sgov=[
+            ("Robinhood individual (...8902)", 5710.85),
+            ("ROTH IRA (...*****4882)", 37860.19),
+        ]))
+        assert "SGOV" in html
+        assert "Robinhood individual" in html
+        assert "ROTH IRA" in html
+        assert "$5,711" in html or "$5710" in html or "5,711" in html
+
+    def test_sgov_section_hidden_when_empty(self):
+        html = fe.build_html(self._quiet(sgov=[]))
+        assert "SGOV" not in html
+
+    def test_sgov_total_shown(self):
+        html = fe.build_html(self._quiet(sgov=[
+            ("Account A", 50000.0),
+            ("Account B", 63000.0),
+        ]))
+        assert "113,000" in html or "$113,000" in html

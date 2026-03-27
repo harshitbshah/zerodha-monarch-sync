@@ -193,6 +193,25 @@ def get_account_balances(token: str) -> dict[str, float]:
     return balances
 
 
+_SGOV_HOLDINGS_QUERY = """
+query GetHoldings($accountId: ID!) {
+    portfolio(input: { accountIds: [$accountId] }) {
+        aggregateHoldings {
+            edges {
+                node {
+                    quantity
+                    totalValue
+                    holdings {
+                        ticker
+                    }
+                }
+            }
+        }
+    }
+}
+"""
+
+
 def get_sgov_total(token: str) -> float:
     """Sum SGOV quantity across all active brokerage accounts."""
     accounts = get_monarch_accounts(token)
@@ -201,27 +220,10 @@ def get_sgov_total(token: str) -> float:
         if a.get("type", {}).get("name") == "brokerage" and not a.get("deactivatedAt")
     ]
 
-    query = """
-    query GetHoldings($accountId: ID!) {
-        portfolio(input: { accountIds: [$accountId] }) {
-            aggregateHoldings {
-                edges {
-                    node {
-                        quantity
-                        holdings {
-                            ticker
-                        }
-                    }
-                }
-            }
-        }
-    }
-    """
-
     total_sgov = 0.0
     for account_id in brokerage_ids:
         payload = json.dumps({
-            "query": query,
+            "query": _SGOV_HOLDINGS_QUERY,
             "variables": {"accountId": account_id},
         }).encode()
         result = monarch_request(token, payload)
@@ -237,6 +239,43 @@ def get_sgov_total(token: str) -> float:
             for holding in holdings:
                 if holding.get("ticker") == "SGOV":
                     total_sgov += node.get("quantity", 0.0)
+                    break
+
+    return round(total_sgov, 6)
+
+
+def print_sgov_breakdown(token: str) -> float:
+    """Print per-account SGOV holdings as structured log lines and return total."""
+    accounts = get_monarch_accounts(token)
+    brokerage_accounts = [
+        a for a in accounts
+        if a.get("type", {}).get("name") == "brokerage" and not a.get("deactivatedAt")
+    ]
+
+    total_sgov = 0.0
+    for acct in brokerage_accounts:
+        account_id = acct["id"]
+        name = acct.get("displayName", account_id)
+        payload = json.dumps({
+            "query": _SGOV_HOLDINGS_QUERY,
+            "variables": {"accountId": account_id},
+        }).encode()
+        result = monarch_request(token, payload)
+        edges = (
+            result.get("data", {})
+            .get("portfolio", {})
+            .get("aggregateHoldings", {})
+            .get("edges", [])
+        )
+        for edge in edges:
+            node = edge.get("node", {})
+            holdings = node.get("holdings", [])
+            for holding in holdings:
+                if holding.get("ticker") == "SGOV":
+                    qty = node.get("quantity", 0.0)
+                    value = node.get("totalValue", 0.0) or 0.0
+                    total_sgov += qty
+                    print(f"[SGOV] {name}: ${value:.2f}")
                     break
 
     return round(total_sgov, 6)
@@ -376,8 +415,8 @@ if __name__ == "__main__":
     balances = get_account_balances(token)
     print(f"  Found {len(balances)} accounts")
 
-    print("Fetching SGOV total from Monarch...")
-    sgov_total = get_sgov_total(token)
+    print("Fetching SGOV holdings from Monarch...")
+    sgov_total = print_sgov_breakdown(token)
     print(f"  SGOV total: {sgov_total:,.4f} shares")
 
     print("Writing to Google Sheets...")

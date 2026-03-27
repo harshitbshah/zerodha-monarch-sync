@@ -18,6 +18,7 @@ def parse(text: str) -> dict:
         "indian_new":    [],     # [("GPIL", "5804")]
         "us_closed":     [],     # ["ZS"]
         "us_new":        [],     # [("RKLB", "460.87")]
+        "sgov":          [],     # [("Robinhood individual (...8902)", 56.76)]
         "warnings":      [],
     }
 
@@ -69,6 +70,11 @@ def parse(text: str) -> dict:
         if m:
             data["us_new"].append((m.group(1), m.group(2)))
 
+        # [SGOV] Robinhood individual (...8902): $5710.85
+        m = re.match(r"\[SGOV\] (.+): \$([0-9.]+)", line_s)
+        if m:
+            data["sgov"].append((m.group(1), float(m.group(2))))
+
         if re.match(r"(WARNING|ERROR):", line_s):
             data["warnings"].append(line_s)
 
@@ -84,6 +90,13 @@ def _change_row(ticker, value_html):
     return (f'\n      <tr>'
             f'<td style="padding:4px 0;font-family:monospace;font-size:13px;width:55%;">{ticker}</td>'
             f'<td style="padding:4px 0;font-size:13px;text-align:right;">{value_html}</td>'
+            f'</tr>')
+
+
+def _sgov_row(name, value_html):
+    return (f'\n      <tr>'
+            f'<td style="padding:3px 0;font-size:12px;color:#555;width:65%;">{name}</td>'
+            f'<td style="padding:3px 0;font-size:12px;text-align:right;font-family:monospace;">{value_html}</td>'
             f'</tr>')
 
 
@@ -158,6 +171,20 @@ def build_html(data: dict) -> str:
         us_rows += _change_row(ticker, val)
     us_section = _changes_section("US PF changes", us_rows) if us_rows else ""
 
+    # SGOV breakdown
+    sgov_section = ""
+    if data["sgov"]:
+        sgov_rows = ""
+        total_sgov_value = 0.0
+        for name, value in data["sgov"]:
+            total_sgov_value += value
+            sgov_rows += _sgov_row(name, f"${value:,.0f}")
+        sgov_rows += (f'\n      <tr style="border-top:1px solid #f0f0f0;">'
+                      f'<td style="padding:5px 0 2px;font-size:12px;font-weight:600;">Total</td>'
+                      f'<td style="padding:5px 0 2px;font-size:12px;text-align:right;font-family:monospace;font-weight:600;">${total_sgov_value:,.0f}</td>'
+                      f'</tr>')
+        sgov_section = _changes_section("SGOV (0–3M Treasury)", sgov_rows)
+
     # Footer
     footer_html = ""
     if data["run_url"]:
@@ -174,7 +201,7 @@ def build_html(data: dict) -> str:
     <div style="padding:20px 24px 16px;border-bottom:1px solid #f0f0f0;">
       <span style="font-size:18px;font-weight:600;">{emoji} Portfolio sync</span>
       <span style="color:#888;margin-left:8px;font-size:13px;">{date_str}</span>
-    </div>{warning_html}{summary_html}{indian_section}{us_section}{footer_html}
+    </div>{warning_html}{summary_html}{indian_section}{us_section}{sgov_section}{footer_html}
   </div>
   <p style="text-align:center;color:#ccc;font-size:11px;margin-top:8px;">portfolio-sync · GitHub Actions</p>
 </div>
