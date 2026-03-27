@@ -32,9 +32,6 @@ SHEET_ACCOUNTS = json.loads(os.getenv("ACCOUNTS_JSON", json.dumps([
     {"mask": "6677", "sheet_category": "CDs", "sheet_institution": "Marcus"},
 ])))
 
-# Label to search for in the sheet to locate the SGOV quantity cell.
-# The value is written to the cell immediately to the right of this label.
-SGOV_LABEL = os.getenv("SGOV_LABEL", "Total:")
 PF_BREAKDOWN_LABEL = os.getenv("PF_BREAKDOWN_LABEL", "PF Breakdown")
 
 
@@ -154,7 +151,7 @@ def update_monarch(balance: float) -> None:
     print(f"Updated: {updated.get('displayName')} → ${updated.get('displayBalance'):,.2f}")
 
 
-# ── Step 3: Read account balances + SGOV total from Monarch ──────────────────
+# ── Step 3: Read account balances from Monarch ───────────────────────────────
 def get_account_balances(token: str) -> dict[str, float]:
     """Match Monarch accounts to SHEET_ACCOUNTS entries by mask or monarch_name.
 
@@ -210,38 +207,6 @@ query GetHoldings($accountId: ID!) {
     }
 }
 """
-
-
-def get_sgov_total(token: str) -> float:
-    """Sum SGOV quantity across all active brokerage accounts."""
-    accounts = get_monarch_accounts(token)
-    brokerage_ids = [
-        a["id"] for a in accounts
-        if a.get("type", {}).get("name") == "brokerage" and not a.get("deactivatedAt")
-    ]
-
-    total_sgov = 0.0
-    for account_id in brokerage_ids:
-        payload = json.dumps({
-            "query": _SGOV_HOLDINGS_QUERY,
-            "variables": {"accountId": account_id},
-        }).encode()
-        result = monarch_request(token, payload)
-        edges = (
-            result.get("data", {})
-            .get("portfolio", {})
-            .get("aggregateHoldings", {})
-            .get("edges", [])
-        )
-        for edge in edges:
-            node = edge.get("node", {})
-            holdings = node.get("holdings", [])
-            for holding in holdings:
-                if holding.get("ticker") == "SGOV":
-                    total_sgov += node.get("quantity", 0.0)
-                    break
-
-    return round(total_sgov, 6)
 
 
 def print_sgov_breakdown(token: str) -> float:
@@ -312,20 +277,9 @@ def _resolve_sheet_rows(rows: list) -> list[int | None]:
     return result
 
 
-def _find_sgov_cell(rows: list) -> str:
-    """Return the A1 address of the cell to the right of SGOV_LABEL."""
-    col_letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-    for row_idx, row in enumerate(rows):
-        for col_idx, cell in enumerate(row):
-            if cell.strip() == SGOV_LABEL and col_idx + 1 < 26:
-                return f"{col_letters[col_idx + 1]}{row_idx + 1}"
-    raise ValueError(f"Could not find SGOV label '{SGOV_LABEL}' in sheet")
-
-
-def update_google_sheet(balances: dict[int, float], sgov_total: float) -> None:
+def update_google_sheet(balances: dict[int, float]) -> None:
     rows = _read_sheet_rows()
     row_numbers = _resolve_sheet_rows(rows)
-    sgov_cell = _find_sgov_cell(rows)
 
     service = _sheets_service(readonly=False)
     data = []
@@ -341,9 +295,6 @@ def update_google_sheet(balances: dict[int, float], sgov_total: float) -> None:
         data.append({"range": cell, "values": [[round(balance, 2)]]})
         label = entry.get("mask") or entry.get("monarch_name")
         print(f"  {label} → C{row}: ${balance:,.2f}")
-
-    data.append({"range": f"'{SHEET_TAB}'!{sgov_cell}", "values": [[sgov_total]]})
-    print(f"  SGOV total → {sgov_cell}: {sgov_total:,.4f} shares")
 
     service.spreadsheets().values().batchUpdate(
         spreadsheetId=SHEET_ID,
@@ -416,11 +367,10 @@ if __name__ == "__main__":
     print(f"  Found {len(balances)} accounts")
 
     print("Fetching SGOV holdings from Monarch...")
-    sgov_total = print_sgov_breakdown(token)
-    print(f"  SGOV total: {sgov_total:,.4f} shares")
+    print_sgov_breakdown(token)
 
     print("Writing to Google Sheets...")
-    update_google_sheet(balances, sgov_total)
+    update_google_sheet(balances)
 
     print("\nReading PF summary...")
     print_pf_summary()
