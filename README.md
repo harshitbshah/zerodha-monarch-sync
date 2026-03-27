@@ -8,7 +8,7 @@ Five scripts run in sequence each weekday:
 
 ### 1. `kite_auth.py` — Zerodha headless login
 
-Logs in to Zerodha using user ID + password + TOTP (via `pyotp`), extracts the `enctoken` session cookie, and writes it to `$GITHUB_OUTPUT` for subsequent steps.
+Validates a cached enctoken (`KITE_ENCTOKEN_CACHE` GitHub variable) before attempting a full login. If the token is still valid it is reused silently — no fresh login, no Zerodha security email. A full login (user ID + password + TOTP via `pyotp`) only runs when the cached token has expired. Writes the enctoken to `$GITHUB_OUTPUT` for downstream steps.
 
 ### 2. `sync_indian_portfolio.py` — Zerodha holdings → Indian Portfolio sheet
 
@@ -16,14 +16,15 @@ Logs in to Zerodha using user ID + password + TOTP (via `pyotp`), extracts the `
 - **Updates** Column C (Quantity) for all tickers already in the *Indian Portfolio* tab
 - **Removes** rows for tickers no longer held in Zerodha (closed positions)
 - **Inserts** new rows for tickers in Zerodha not yet in the sheet — Theme is left blank for manual entry
+- Fetches available cash balance from the Kite margins API and emits a `[Indian] Margin:` log line for the email
 
 ### 3. `sync.py` — Monarch balances → PF Summary sheet + email data
 
 - Reads the **Indian PF** USD balance from the *PF Summary* tab and updates the manual Zerodha account in **Monarch Money**
 - Reads all US brokerage account balances from Monarch and writes them to the *PF Summary* tab (bank accounts, PPF, CDs)
-- Fetches SGOV holdings across all brokerage accounts — writes total share count to the PF Summary sheet, and emits per-account dollar values as structured `[SGOV]` log lines for the email
+- Fetches SGOV holdings across all brokerage accounts — writes total share count to the PF Summary sheet, and emits per-account dollar values as `[SGOV]` log lines for the email
 - Emits per-account balance lines as `[EF]` log lines (bank, PPF, CDs) for the Liquid Reserves email section
-- Reads the **PF Breakdown** table (Indian PF / US PF / Cash rows) and emits a parseable summary line for the email
+- Reads the **PF Breakdown** table (Indian PF / US PF / Cash rows) and emits a parseable `PF Summary:` line for the email
 
 ### 4. `sync_us_portfolio.py` — Monarch holdings → US Portfolio sheet
 
@@ -44,6 +45,7 @@ Parses the combined log (`sync_output.txt`) from all prior steps and generates a
 - **Portfolio summary table** — Indian PF / US PF / Cash / Total with allocation percentages
 - **Indian PF changes** — quantity diffs (±shares), new positions, closed positions
 - **US PF changes** — new positions, closed positions
+- **Zerodha Margin** — available cash from Kite margins API; only shown when < 0 (needs attention) or > ₹1000 (meaningful idle cash)
 - **SGOV (0–3M Treasury)** — per-account dollar value breakdown, grouped by institution (Fidelity / Robinhood)
 - **Liquid Reserves** — bank / PPF / CDs balances grouped by category, with total
 - **Warning banner** — shown if any WARNING or ERROR lines were emitted
@@ -107,7 +109,7 @@ sync_indian_portfolio.py        sync.py                  sync_us_portfolio.py
 | Read tickers + quantities | B, C | Diff against Zerodha holdings |
 | Quantity | C | Updated for all existing positions |
 | New rows | A–C | Inserted at end; Theme (col A) left blank |
-| Closed rows | — | Entire row deleted |
+| Closed rows | — | Entire row deleted via `deleteRange` (not `deleteDimension` — see note below) |
 
 ### Cells read/written by `sync_us_portfolio.py` (US Portfolio tab)
 
@@ -116,17 +118,18 @@ sync_indian_portfolio.py        sync.py                  sync_us_portfolio.py
 | Read tickers | B | Diff against Monarch holdings |
 | Quantity | D | Updated for all existing positions |
 | New rows | A–F | Theme (A), Ticker (B), % of total (C formula), Qty (D), Holdings/GOOGLEFINANCE (E formula), Conviction (F) |
-| Closed rows | — | Entire row deleted |
+| Closed rows | — | Entire row deleted via `deleteRange` (not `deleteDimension` — see note below) |
+
+> **Note on row deletion:** Both sheets are Google Sheets native tables with Finance smart chips. The `deleteDimension` API call returns HTTP 500 on such sheets. Both scripts use `deleteRange` with `shiftDimension: ROWS` instead, which is Google's recommended approach for table row deletion.
 
 ## Structured log lines
-
-`sync.py` emits machine-readable lines that `format_email.py` parses to build the email:
 
 | Pattern | Example | Used for |
 |---------|---------|----------|
 | `[Indian] Diff: TICKER ±N` | `[Indian] Diff: FEDFINA +500` | Indian PF quantity change |
 | `[Indian] Closed: TICKER` | `[Indian] Closed: WINDLAS` | Indian position exited |
 | `[Indian] Added: TICKER +QTY` | `[Indian] Added: GPIL +5804` | New Indian position |
+| `[Indian] Margin: N.NN` | `[Indian] Margin: 12345.67` | Available cash in Zerodha (INR) |
 | `[US] Closed: TICKER` | `[US] Closed: ZS` | US position exited |
 | `[US] Added: TICKER +QTY` | `[US] Added: RKLB +460.87` | New US position |
 | `[SGOV] NAME: $VALUE` | `[SGOV] Fidelity ROTH (...4882): $37860.19` | Per-account SGOV dollar value |
@@ -202,6 +205,7 @@ print(s['token'])
 | `PF_BREAKDOWN_LABEL` | `PF Breakdown` | Header label that marks the portfolio breakdown table in PF Summary |
 | `INDIAN_PORTFOLIO_TAB` | `Indian Portfolio` | Tab name for `sync_indian_portfolio.py` |
 | `US_PORTFOLIO_TAB` | `US Portfolio` | Tab name for `sync_us_portfolio.py` |
+| `KITE_ENCTOKEN_CACHE` | *(auto-managed)* | Cached Zerodha enctoken — updated automatically after each run to avoid repeated logins |
 
 `ACCOUNTS_JSON` maps each Monarch account to a row in the PF Summary tab:
 ```json
@@ -249,7 +253,7 @@ Copy `.env.example` to `.env` and fill in your values for a more convenient loca
 python -m pytest tests/
 ```
 
-Tests cover `kite_auth.py` (login flow), `sync.py` (pure logic functions), and `format_email.py` (parsing and HTML generation). Google Sheets and Monarch API calls are mocked. 114 tests as of the last checkpoint.
+Tests cover `kite_auth.py` (login flow), `sync.py` (pure logic functions), `sync_indian_portfolio.py` (sync logic), and `format_email.py` (parsing and HTML generation). Google Sheets and Monarch API calls are mocked. 121 tests.
 
 ## Maintenance
 
@@ -260,13 +264,19 @@ Monarch tokens last several months. When one expires the workflow fails and you'
 1. Re-run the login script above to get a new `monarch_session.pickle`
 2. Extract the token and update the `MONARCH_TOKEN` GitHub Secret
 
+### Zerodha login emails
+
+`kite_auth.py` caches the enctoken in `KITE_ENCTOKEN_CACHE` (GitHub Variable) and reuses it across runs. The enctoken expires at midnight IST each day, so one fresh login (and one Zerodha security email) will occur on the first run of each trading day. Repeated manual triggers within the same day reuse the cache silently.
+
+Long-term fix to eliminate the daily email: use a **self-hosted GitHub Actions runner** with a static IP — Zerodha stops flagging a recognized IP after the first login.
+
 ### New positions (US Portfolio)
 
 When `sync_us_portfolio.py` inserts a new row, **Theme** and **Conviction Rating** are left blank — fill these in manually after the next run. Column B (ticker) will show a Google Sheets suggestion to "Add Finance chip" — clicking it is optional and purely cosmetic; the `GOOGLEFINANCE` formula in column E uses the ticker directly.
 
-### Closed positions (US Portfolio)
+### Closed positions
 
-Rows are deleted automatically when a ticker is no longer found in any Monarch brokerage account. If a position disappears temporarily due to a brokerage sync delay, it will be re-inserted on the next run (with blank Theme/Conviction — keep an eye on this).
+Rows are deleted automatically when a ticker is no longer found in the source (Zerodha for Indian Portfolio, Monarch for US Portfolio). If a position disappears temporarily due to a brokerage sync delay, it will be re-inserted on the next run (with blank Theme/Conviction — keep an eye on this).
 
 ### SGOV
 
