@@ -124,6 +124,13 @@ def _sgov_row(name, value_html):
             f'</tr>')
 
 
+def _group_header(title):
+    return (f'\n    <div style="padding:16px 24px 4px;border-top:2px solid #f0f0f0;">'
+            f'\n      <span style="font-size:12px;font-weight:700;text-transform:uppercase;'
+            f'letter-spacing:1.2px;color:#555;">{title}</span>'
+            f'\n    </div>')
+
+
 def _changes_section(title, rows_html):
     return (f'\n    <div style="padding:0 24px 20px;">'
             f'\n      <div style="color:#aaa;font-size:11px;text-transform:uppercase;letter-spacing:1px;'
@@ -280,7 +287,7 @@ def build_html(data: dict) -> str:
       <span style="font-size:18px;font-weight:600;">{emoji} Portfolio sync</span>
       <span style="color:#888;margin-left:8px;font-size:13px;">{date_str}</span>
       {f'<div style="margin-top:8px;font-size:26px;font-weight:700;letter-spacing:-0.5px;">{data["net_worth"]}<span style="font-size:13px;font-weight:400;color:#888;margin-left:6px;">net worth</span></div>' if data["net_worth"] else ""}
-    </div>{warning_html}{summary_html}{indian_section}{us_section}{margin_section}{sgov_section}{ef_section}{footer_html}
+    </div>{warning_html}{summary_html}{_group_header("Portfolio Changes") if us_section or indian_section else ""}{us_section}{indian_section}{_group_header("Cash & Liquidity") if margin_section or sgov_section or ef_section else ""}{margin_section}{sgov_section}{ef_section}{footer_html}
   </div>
   <p style="text-align:center;color:#ccc;font-size:11px;margin-top:8px;">portfolio-sync · GitHub Actions</p>
 </div>
