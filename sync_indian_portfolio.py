@@ -275,8 +275,11 @@ def sync() -> None:
         print(f"[Indian] Added: {ticker} +{holdings[ticker]}")
     print(f"[Indian] Unchanged: {unchanged}")
 
-    cash = get_kite_cash()
-    print(f"[Indian] Margin: {cash:.2f}")
+    try:
+        cash = get_kite_cash()
+        print(f"[Indian] Margin: {cash:.2f}")
+    except Exception as e:
+        print(f"WARNING: Could not fetch Zerodha margin (skipping): {e}")
 
     print(f"\nDone. Updated {len(to_update)}, removed {len(to_remove)}, added {len(to_add)}.")
 
