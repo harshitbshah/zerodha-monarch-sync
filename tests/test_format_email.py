@@ -149,6 +149,17 @@ class TestParse:
         data = fe.parse(ERROR_LOG)
         assert any("Sheet update failed" in w for w in data["warnings"])
 
+    def test_parses_zerodha_margin(self):
+        data = fe.parse("[Indian] Margin: 12345.67\n")
+        assert data["zerodha_margin"] == pytest.approx(12345.67)
+
+    def test_parses_negative_zerodha_margin(self):
+        data = fe.parse("[Indian] Margin: -500.00\n")
+        assert data["zerodha_margin"] == pytest.approx(-500.0)
+
+    def test_zerodha_margin_none_when_absent(self):
+        assert fe.parse("")["zerodha_margin"] is None
+
     def test_parses_sgov_entries(self):
         data = fe.parse(SGOV_LOG)
         names = [n for n, _ in data["sgov"]]
@@ -183,6 +194,7 @@ class TestParse:
         assert data["us_pf"] is None
         assert data["cash"] is None
         assert data["cash_pct"] is None
+        assert data["zerodha_margin"] is None
         assert data["total"] is None
         assert data["indian_diffs"] == []
         assert data["indian_closed"] == []
@@ -202,6 +214,7 @@ class TestBuildSubject:
             "total": "$786,962.00",
             "cash": None,
             "cash_pct": None,
+            "zerodha_margin": None,
             "indian_diffs": [],
             "indian_closed": [],
             "indian_new": [],
@@ -246,6 +259,7 @@ class TestBuildHtml:
             "us_pct": "55.55%",
             "cash": "$112,907.25",
             "cash_pct": "14.64%",
+            "zerodha_margin": None,
             "total": "$786,962.00",
             "indian_diffs": [],
             "indian_closed": [],
@@ -357,6 +371,24 @@ class TestBuildHtml:
     def test_ef_section_hidden_when_empty(self):
         html = fe.build_html(self._quiet(ef=[]))
         assert "Liquid Reserves" not in html
+
+    def test_margin_section_shown_when_above_1000(self):
+        html = fe.build_html(self._quiet(zerodha_margin=5000.0))
+        assert "Zerodha Margin" in html
+        assert "5,000.00" in html
+
+    def test_margin_section_shown_when_negative(self):
+        html = fe.build_html(self._quiet(zerodha_margin=-200.0))
+        assert "Zerodha Margin" in html
+        assert "-200.00" in html
+
+    def test_margin_section_hidden_when_small_positive(self):
+        html = fe.build_html(self._quiet(zerodha_margin=500.0))
+        assert "Zerodha Margin" not in html
+
+    def test_margin_section_hidden_when_none(self):
+        html = fe.build_html(self._quiet(zerodha_margin=None))
+        assert "Zerodha Margin" not in html
 
     def test_ef_grouped_by_category(self):
         html = fe.build_html(self._quiet(ef=[

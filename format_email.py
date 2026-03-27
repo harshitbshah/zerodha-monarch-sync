@@ -20,6 +20,7 @@ def parse(text: str) -> dict:
         "indian_new":    [],     # [("GPIL", "5804")]
         "us_closed":     [],     # ["ZS"]
         "us_new":        [],     # [("RKLB", "460.87")]
+        "zerodha_margin": None,  # 12345.67
         "sgov":          [],     # [("Robinhood individual (...8902)", 56.76)]
         "ef":            [],     # [("Bank", "Chase", 11995.54)]
         "warnings":      [],
@@ -76,6 +77,11 @@ def parse(text: str) -> dict:
         m = re.match(r"\[US\] Added: (\S+) \+(\S+)", line_s)
         if m:
             data["us_new"].append((m.group(1), m.group(2)))
+
+        # [Indian] Margin: 12345.67
+        m = re.match(r"\[Indian\] Margin: (-?[0-9.]+)", line_s)
+        if m:
+            data["zerodha_margin"] = float(m.group(1))
 
         # [SGOV] Robinhood individual (...8902): $5710.85
         m = re.match(r"\[SGOV\] (.+): \$([0-9.]+)", line_s)
@@ -194,6 +200,17 @@ def build_html(data: dict) -> str:
         us_rows += _change_row(ticker, val)
     us_section = _changes_section("US PF changes", us_rows) if us_rows else ""
 
+    # Zerodha margin — only shown if negative or > 1000
+    margin_section = ""
+    margin = data["zerodha_margin"]
+    if margin is not None and (margin < 0 or margin > 1000):
+        color = "#dc2626" if margin < 0 else "#16a34a"
+        margin_row = (f'\n      <tr>'
+                      f'<td style="padding:4px 0;color:#555;">Available cash</td>'
+                      f'<td style="padding:4px 0;text-align:right;font-weight:500;color:{color};">₹{margin:,.2f}</td>'
+                      f'</tr>')
+        margin_section = _changes_section("Zerodha Margin", margin_row)
+
     # SGOV breakdown — grouped by institution
     sgov_section = ""
     if data["sgov"]:
@@ -256,7 +273,7 @@ def build_html(data: dict) -> str:
     <div style="padding:20px 24px 16px;border-bottom:1px solid #f0f0f0;">
       <span style="font-size:18px;font-weight:600;">{emoji} Portfolio sync</span>
       <span style="color:#888;margin-left:8px;font-size:13px;">{date_str}</span>
-    </div>{warning_html}{summary_html}{indian_section}{us_section}{sgov_section}{ef_section}{footer_html}
+    </div>{warning_html}{summary_html}{indian_section}{us_section}{margin_section}{sgov_section}{ef_section}{footer_html}
   </div>
   <p style="text-align:center;color:#ccc;font-size:11px;margin-top:8px;">portfolio-sync · GitHub Actions</p>
 </div>

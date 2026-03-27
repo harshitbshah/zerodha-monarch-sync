@@ -34,6 +34,20 @@ _TICKER_RE = re.compile(r"^[A-Z][A-Z0-9&]{0,19}$")
 
 # ── Kite helpers ──────────────────────────────────────────────────────────────
 
+def get_kite_cash() -> float:
+    """Return available cash balance from Zerodha equity margins."""
+    r = requests.get(
+        "https://kite.zerodha.com/oms/user/margins",
+        headers={"Authorization": f"enctoken {KITE_ACCESS_TOKEN}"},
+        timeout=15,
+    )
+    r.raise_for_status()
+    data = r.json()
+    if data.get("status") != "success":
+        raise RuntimeError(f"Kite margins fetch failed: {data.get('message')}")
+    return float(data.get("data", {}).get("equity", {}).get("available", {}).get("cash", 0.0))
+
+
 def get_kite_holdings() -> dict[str, int]:
     """Return {tradingsymbol: quantity} for all settled DEMAT holdings."""
     r = requests.get(
@@ -260,6 +274,9 @@ def sync() -> None:
     for ticker in sorted(to_add):
         print(f"[Indian] Added: {ticker} +{holdings[ticker]}")
     print(f"[Indian] Unchanged: {unchanged}")
+
+    cash = get_kite_cash()
+    print(f"[Indian] Margin: {cash:.2f}")
 
     print(f"\nDone. Updated {len(to_update)}, removed {len(to_remove)}, added {len(to_add)}.")
 

@@ -90,6 +90,7 @@ class TestSync:
         """Run sync() with mocked I/O. sheet_sequence covers initial + re-reads."""
         with patch("sync_indian_portfolio.get_kite_holdings", return_value=kite_holdings), \
              patch("sync_indian_portfolio.get_sheet_holdings", side_effect=sheet_sequence), \
+             patch("sync_indian_portfolio.get_kite_cash", return_value=0.0), \
              patch("sync_indian_portfolio.update_quantities") as mock_upd, \
              patch("sync_indian_portfolio.delete_closed_rows") as mock_del, \
              patch("sync_indian_portfolio.insert_new_rows") as mock_ins:
