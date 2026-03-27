@@ -21,16 +21,7 @@ MONARCH_ACCOUNT_NAME = os.getenv("MONARCH_ACCOUNT_NAME", "Zerodha")
 # sheet_category + sheet_institution locate the row dynamically at runtime.
 # For duplicate category+institution (e.g. two Chase or two Marcus rows),
 # entries are matched in the order they appear in the sheet.
-SHEET_ACCOUNTS = json.loads(os.getenv("ACCOUNTS_JSON", json.dumps([
-    {"mask": "8843", "sheet_category": "Bank", "sheet_institution": "Chase"},
-    {"mask": "6986", "sheet_category": "Bank", "sheet_institution": "Chase"},
-    {"monarch_name": "ICICI",  "sheet_category": "Bank", "sheet_institution": "ICICI"},
-    {"monarch_name": "PayPal", "sheet_category": "Bank", "sheet_institution": "PayPal"},
-    {"monarch_name": "PPF",    "sheet_category": "PPF",  "sheet_institution": "ICICI"},
-    {"mask": "9868", "sheet_category": "CDs", "sheet_institution": "Synchrony"},
-    {"mask": "3294", "sheet_category": "CDs", "sheet_institution": "Marcus"},
-    {"mask": "6677", "sheet_category": "CDs", "sheet_institution": "Marcus"},
-])))
+SHEET_ACCOUNTS = json.loads(os.environ["ACCOUNTS_JSON"])
 
 # Label to search for in the sheet to locate the SGOV quantity cell.
 # The value is written to the cell immediately to the right of this label.
