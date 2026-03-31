@@ -39,9 +39,23 @@ jobs:
         run: python kite_auth.py
 
       - name: Cache Kite access token
-        run: gh variable set KITE_ENCTOKEN_CACHE --body "${{ steps.kite_auth.outputs.access_token }}"
+        run: |
+          python - <<'EOF'
+          import os, urllib.request, json
+          token = os.environ["GH_TOKEN"]
+          value = os.environ["ACCESS_TOKEN"]
+          data = json.dumps({"name": "KITE_ENCTOKEN_CACHE", "value": value}).encode()
+          req = urllib.request.Request(
+              "https://api.github.com/repos/harshitbshah/portfolio-sync/actions/variables/KITE_ENCTOKEN_CACHE",
+              data=data, method="PATCH",
+              headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json",
+                       "X-GitHub-Api-Version": "2022-11-28", "Content-Type": "application/json"},
+          )
+          urllib.request.urlopen(req)
+          EOF
         env:
           GH_TOKEN: ${{ secrets.GH_VARIABLES_PAT }}
+          ACCESS_TOKEN: ${{ steps.kite_auth.outputs.access_token }}
 
       - name: Sync Indian Portfolio → Google Sheet
         env:
